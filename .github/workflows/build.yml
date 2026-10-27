@@ -28,27 +28,12 @@ jobs:
 
       - name: Si fallaron, guardar un resumen legible (se sube al repositorio)
         if: failure()
+        shell: bash
+        run: python3 .github/workflows/summarize_test_failures.py > ci-failure.log
+
+      - name: Subir el resumen al repositorio
+        if: failure()
         run: |
-          {
-            echo "# Fallo de pruebas — commit ${GITHUB_SHA}"
-            echo
-            for f in app/build/test-results/test/*.xml; do
-              echo "## $f"
-              echo '```'
-              python3 - "$f" <<'PY'
-import sys, xml.etree.ElementTree as ET
-t = ET.parse(sys.argv[1]).getroot()
-for tc in t.findall("testcase"):
-    for tag in ("failure", "error"):
-        el = tc.find(tag)
-        if el is not None:
-            print(f"{tc.get('classname')}.{tc.get('name')}: {el.get('message')}")
-            print((el.text or "")[:4000])
-            print("---")
-PY
-              echo '```'
-            done
-          } > ci-failure.log || true
           cat ci-failure.log || true
           git config user.name "wii-backup-manager-ci"
           git config user.email "noreply@anthropic.com"
