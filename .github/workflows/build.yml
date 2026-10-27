@@ -26,6 +26,36 @@ jobs:
       - name: Pruebas unitarias del núcleo (ISO/WBFS y RVZ)
         run: ./gradlew test --no-daemon
 
+      - name: Si fallaron, guardar un resumen legible (se sube al repositorio)
+        if: failure()
+        run: |
+          {
+            echo "# Fallo de pruebas — commit ${GITHUB_SHA}"
+            echo
+            for f in app/build/test-results/test/*.xml; do
+              echo "## $f"
+              echo '```'
+              python3 - "$f" <<'PY'
+import sys, xml.etree.ElementTree as ET
+t = ET.parse(sys.argv[1]).getroot()
+for tc in t.findall("testcase"):
+    for tag in ("failure", "error"):
+        el = tc.find(tag)
+        if el is not None:
+            print(f"{tc.get('classname')}.{tc.get('name')}: {el.get('message')}")
+            print((el.text or "")[:4000])
+            print("---")
+PY
+              echo '```'
+            done
+          } > ci-failure.log || true
+          cat ci-failure.log || true
+          git config user.name "wii-backup-manager-ci"
+          git config user.email "noreply@anthropic.com"
+          git add -f ci-failure.log
+          git commit -m "ci: registrar fallo de pruebas ($GITHUB_SHA)" || true
+          git push || true
+
       - name: Compilar APK de depuración
         run: ./gradlew assembleDebug --no-daemon
 
