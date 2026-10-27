@@ -3,6 +3,8 @@ package com.wbm.app;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.UriPermission;
@@ -12,40 +14,47 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.util.SparseBooleanArray;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.FrameLayout;
+import android.widget.GridView;
 import android.widget.LinearLayout;
-import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
-/** Pantalla principal: biblioteca de juegos, opciones y conversión por lotes. */
+/** Pantalla principal: biblioteca de juegos con carátulas, opciones, conversión y pestaña de donar. */
 public class MainActivity extends Activity {
     private static final int REQ_TREE = 1;
     private static final int REQ_NOTIF = 2;
     private static final String PREFS = "wbm";
     private static final String KEY_TREE = "tree";
+    private static final String BBVA_ACCOUNT = "012 180 01538385555 8";
 
     private SharedPreferences prefs;
     private Uri tree;
     private final List<Game> games = new ArrayList<>();
-    private final List<String> labels = new ArrayList<>();
-    private ArrayAdapter<String> adapter;
+    private final Set<Integer> selected = new HashSet<>();
+    private GameAdapter adapter;
+
+    private LinearLayout libraryContainer;
+    private LinearLayout donateContainer;
+    private Button tabLibraryBtn;
+    private Button tabDonateBtn;
 
     private TextView libraryText;
+    private TextView storageStatusText;
     private TextView emptyText;
-    private ListView listView;
+    private GridView gridView;
     private CheckBox optLayout;
     private CheckBox optSplit;
     private CheckBox optPad;
@@ -54,6 +63,8 @@ public class MainActivity extends Activity {
     private TextView progressText;
     private ProgressBar progressBar;
     private TextView logText;
+
+    private StorageCheck.Info storageInfo;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private boolean wasRunning;
@@ -76,7 +87,7 @@ public class MainActivity extends Activity {
             Uri u = Uri.parse(saved);
             if (hasPermission(u)) {
                 tree = u;
-                scan();
+                onTreeChosen();
             }
         }
         updateLibraryText();
@@ -113,42 +124,73 @@ public class MainActivity extends Activity {
         return b;
     }
 
+    // ---------------------------------------------------------------- UI
+
     private void buildUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12), dp(8), dp(12), dp(8));
 
+        LinearLayout tabs = new LinearLayout(this);
+        tabs.setOrientation(LinearLayout.HORIZONTAL);
+        tabLibraryBtn = button("Biblioteca", v -> showTab(true));
+        tabDonateBtn = button("Donar", v -> showTab(false));
+        tabs.addView(tabLibraryBtn, weight());
+        tabs.addView(tabDonateBtn, weight());
+        root.addView(tabs);
+
+        libraryContainer = buildLibraryTab();
+        donateContainer = buildDonateTab();
+        root.addView(libraryContainer, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(donateContainer, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+
+        setContentView(root);
+        showTab(true);
+    }
+
+    private void showTab(boolean library) {
+        libraryContainer.setVisibility(library ? View.VISIBLE : View.GONE);
+        donateContainer.setVisibility(library ? View.GONE : View.VISIBLE);
+        tabLibraryBtn.setEnabled(!library);
+        tabDonateBtn.setEnabled(library);
+    }
+
+    private LinearLayout buildLibraryTab() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+
         libraryText = new TextView(this);
         libraryText.setTextSize(14);
-        root.addView(libraryText, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        col.addView(libraryText);
+
+        storageStatusText = new TextView(this);
+        storageStatusText.setTextSize(12);
+        storageStatusText.setPadding(0, dp(2), 0, dp(4));
+        col.addView(storageStatusText);
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
-        row.addView(button("Elegir carpeta", v -> chooseFolder()), weight());
+        row.addView(button("Elegir carpeta / USB / SD", v -> chooseFolder()), weight());
         row.addView(button("Actualizar", v -> scan()), weight());
         row.addView(button("Marcar todo", v -> selectAll()), weight());
-        root.addView(row);
+        col.addView(row);
 
         FrameLayout listWrap = new FrameLayout(this);
-        listView = new ListView(this);
-        listView.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
-        adapter = new ArrayAdapter<>(this, android.R.layout.simple_list_item_multiple_choice, labels);
-        listView.setAdapter(adapter);
-        listView.setOnItemLongClickListener((parent, view, position, id) -> {
-            showInfo(games.get(position));
-            return true;
-        });
+        gridView = new GridView(this);
+        gridView.setNumColumns(3);
+        gridView.setVerticalSpacing(dp(4));
+        gridView.setHorizontalSpacing(dp(4));
         emptyText = new TextView(this);
         emptyText.setGravity(Gravity.CENTER);
         emptyText.setPadding(dp(16), dp(16), dp(16), dp(16));
-        listWrap.addView(listView, new ViewGroup.LayoutParams(
+        listWrap.addView(gridView, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         listWrap.addView(emptyText, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
-        root.addView(listWrap, lp);
+        col.addView(listWrap, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         optLayout = new CheckBox(this);
         optLayout.setText("Crear carpetas para cargador USB: wbfs/Título [ID]/ID.wbfs y games/Título [ID]/game.iso");
@@ -158,9 +200,9 @@ public class MainActivity extends Activity {
         optPad = new CheckBox(this);
         optPad.setText("Al crear ISO, rellenar hasta el tamaño estándar de Wii");
         optPad.setChecked(true);
-        root.addView(optLayout);
-        root.addView(optSplit);
-        root.addView(optPad);
+        col.addView(optLayout);
+        col.addView(optSplit);
+        col.addView(optPad);
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -169,24 +211,56 @@ public class MainActivity extends Activity {
         cancelBtn.setEnabled(false);
         actions.addView(convertBtn, weight());
         actions.addView(cancelBtn, weight());
-        root.addView(actions);
+        col.addView(actions);
 
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setMax(1000);
-        root.addView(progressBar, new LinearLayout.LayoutParams(
+        col.addView(progressBar, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         progressText = new TextView(this);
         progressText.setTextSize(13);
-        root.addView(progressText);
+        col.addView(progressText);
 
         ScrollView logScroll = new ScrollView(this);
         logText = new TextView(this);
         logText.setTextSize(12);
         logScroll.addView(logText);
-        root.addView(logScroll, new LinearLayout.LayoutParams(
+        col.addView(logScroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(90)));
 
-        setContentView(root);
+        return col;
+    }
+
+    private LinearLayout buildDonateTab() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(8), dp(24), dp(8), dp(8));
+
+        TextView msg = new TextView(this);
+        msg.setText("Si esta aplicación te sirvió, puedes donar lo que quieras. ¡Gracias!");
+        msg.setTextSize(16);
+        msg.setPadding(0, 0, 0, dp(16));
+        col.addView(msg);
+
+        TextView bank = new TextView(this);
+        bank.setText("Banco: BBVA");
+        bank.setTextSize(15);
+        col.addView(bank);
+
+        TextView account = new TextView(this);
+        account.setText("Cuenta: " + BBVA_ACCOUNT);
+        account.setTextSize(18);
+        account.setPadding(0, dp(4), 0, dp(16));
+        col.addView(account);
+
+        Button copyBtn = button("Copiar número de cuenta", v -> {
+            ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(ClipData.newPlainText("Cuenta BBVA", BBVA_ACCOUNT));
+            Toast.makeText(this, "Número de cuenta copiado", Toast.LENGTH_SHORT).show();
+        });
+        col.addView(copyBtn);
+
+        return col;
     }
 
     private LinearLayout.LayoutParams weight() {
@@ -196,23 +270,28 @@ public class MainActivity extends Activity {
     private void updateLibraryText() {
         if (tree == null) {
             libraryText.setText("Biblioteca: (sin elegir)");
-            emptyText.setText("Pulsa «Elegir carpeta» y selecciona donde guardas tus juegos de Wii "
-                    + "(ISO o WBFS). Se buscan también las subcarpetas.");
+            storageStatusText.setText("");
+            emptyText.setText("Pulsa «Elegir carpeta / USB / SD» y selecciona dónde guardas tus juegos de Wii "
+                    + "(ISO, WBFS o RVZ). También puedes elegir una memoria USB (OTG) o una tarjeta SD conectada "
+                    + "al teléfono. Se buscan también las subcarpetas.");
             emptyText.setVisibility(View.VISIBLE);
         } else {
             String seg = tree.getLastPathSegment();
             libraryText.setText("Biblioteca: " + (seg == null ? tree.toString() : Uri.decode(seg)));
+            storageStatusText.setText(storageInfo != null ? storageInfo.statusText() : "");
             if (scanning) {
                 emptyText.setText("Buscando juegos…");
                 emptyText.setVisibility(View.VISIBLE);
             } else if (games.isEmpty()) {
-                emptyText.setText("No se encontraron juegos de Wii (.iso / .wbfs) en esta carpeta.");
+                emptyText.setText("No se encontraron juegos de Wii (.iso / .wbfs / .rvz) en esta carpeta.");
                 emptyText.setVisibility(View.VISIBLE);
             } else {
                 emptyText.setVisibility(View.GONE);
             }
         }
     }
+
+    // ---------------------------------------------------------------- carpeta / USB / SD
 
     private void chooseFolder() {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
@@ -230,20 +309,28 @@ public class MainActivity extends Activity {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
             prefs.edit().putString(KEY_TREE, u.toString()).apply();
             tree = u;
-            scan();
+            onTreeChosen();
         }
     }
 
+    private void onTreeChosen() {
+        storageInfo = StorageCheck.check(this, tree);
+        optSplit.setChecked(storageInfo.needsSplit());
+        scan();
+    }
+
+    // ---------------------------------------------------------------- escaneo
+
     private void scan() {
         if (tree == null) {
-            Toast.makeText(this, "Primero elige la carpeta de tus juegos.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Primero elige la carpeta, USB o SD de tus juegos.", Toast.LENGTH_SHORT).show();
             return;
         }
         if (scanning) return;
         scanning = true;
         games.clear();
-        labels.clear();
-        adapter.notifyDataSetChanged();
+        selected.clear();
+        if (adapter != null) adapter.notifyDataSetChanged();
         updateLibraryText();
         final Uri t = tree;
         new Thread(() -> {
@@ -253,11 +340,13 @@ public class MainActivity extends Activity {
                 scanning = false;
                 games.clear();
                 games.addAll(found);
-                labels.clear();
-                for (Game g : games) labels.add(g.label());
-                adapter.notifyDataSetChanged();
-                listView.clearChoices();
+                selected.clear();
+                int cardWidth = gridView.getWidth() > 0 ? gridView.getWidth() / 3 : dp(100);
+                adapter = new GameAdapter(this, games, selected, cardWidth, this::updateConvertLabel,
+                        pos -> showInfo(games.get(pos)));
+                gridView.setAdapter(adapter);
                 updateLibraryText();
+                updateConvertLabel();
                 if (skipped[0] > 0) {
                     Toast.makeText(this, skipped[0] + " archivo(s) ignorado(s): no son discos de Wii legibles.",
                             Toast.LENGTH_LONG).show();
@@ -267,15 +356,26 @@ public class MainActivity extends Activity {
     }
 
     private void selectAll() {
-        boolean all = listView.getCheckedItemCount() == games.size() && !games.isEmpty();
-        for (int i = 0; i < games.size(); i++) listView.setItemChecked(i, !all);
+        if (games.isEmpty()) return;
+        boolean all = selected.size() == games.size();
+        selected.clear();
+        if (!all) {
+            for (int i = 0; i < games.size(); i++) selected.add(i);
+        }
+        if (adapter != null) adapter.notifyDataSetChanged();
+        updateConvertLabel();
+    }
+
+    private void updateConvertLabel() {
+        convertBtn.setText(selected.isEmpty() ? "Convertir seleccionados"
+                : "Convertir " + selected.size() + " juego(s)");
     }
 
     private void showInfo(Game g) {
         String msg = "ID: " + g.disc.id
                 + "\nTítulo: " + g.displayTitle()
                 + "\nRegión: " + g.disc.region()
-                + "\nFormato: " + (g.wbfs ? "WBFS" : "ISO")
+                + "\nFormato: " + g.kindLabel()
                 + (g.parts.size() > 1 ? " (" + g.parts.size() + " partes)" : "")
                 + "\nTamaño: " + Fmt.size(g.totalSize)
                 + "\nArchivo: " + g.fileName;
@@ -283,31 +383,31 @@ public class MainActivity extends Activity {
                 .setPositiveButton("Cerrar", null).show();
     }
 
+    // ---------------------------------------------------------------- conversión
+
     private void startConversion() {
         if (tree == null) {
-            Toast.makeText(this, "Primero elige la carpeta de tus juegos.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Primero elige la carpeta, USB o SD de tus juegos.", Toast.LENGTH_SHORT).show();
             return;
         }
         if (ConversionService.running) {
             Toast.makeText(this, "Ya hay una conversión en curso.", Toast.LENGTH_SHORT).show();
             return;
         }
-        SparseBooleanArray checked = listView.getCheckedItemPositions();
         final List<ConversionService.Job> jobs = new ArrayList<>();
         int toWbfs = 0;
         int toIso = 0;
-        for (int i = 0; i < games.size(); i++) {
-            if (!checked.get(i)) continue;
-            Game g = games.get(i);
+        for (int pos : selected) {
+            Game g = games.get(pos);
             jobs.add(new ConversionService.Job(g, tree, optLayout.isChecked(), optSplit.isChecked(),
                     optPad.isChecked()));
-            if (g.wbfs) toIso++; else toWbfs++;
+            if (g.kind == Game.Kind.WBFS) toIso++; else toWbfs++;
         }
         if (jobs.isEmpty()) {
-            Toast.makeText(this, "Marca al menos un juego.", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Marca al menos un juego (toca su carátula).", Toast.LENGTH_SHORT).show();
             return;
         }
-        String msg = (toWbfs > 0 ? toWbfs + " ISO → WBFS\n" : "") + (toIso > 0 ? toIso + " WBFS → ISO\n" : "")
+        String msg = (toWbfs > 0 ? toWbfs + " → WBFS (ISO/RVZ)\n" : "") + (toIso > 0 ? toIso + " WBFS → ISO\n" : "")
                 + "\nLos archivos originales no se borran. La conversión sigue en segundo plano.";
         new AlertDialog.Builder(this).setTitle("Convertir " + jobs.size() + " juego(s)").setMessage(msg)
                 .setPositiveButton("Empezar", (d, w) -> launch(jobs))
@@ -321,8 +421,9 @@ public class MainActivity extends Activity {
         }
         ConversionService.enqueue(jobs);
         startForegroundService(new Intent(this, ConversionService.class));
-        listView.clearChoices();
-        adapter.notifyDataSetChanged();
+        selected.clear();
+        if (adapter != null) adapter.notifyDataSetChanged();
+        updateConvertLabel();
         refreshProgress();
     }
 

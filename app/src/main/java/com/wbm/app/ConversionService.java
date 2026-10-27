@@ -24,9 +24,12 @@ import com.wbm.core.SplitSource;
 import com.wbm.core.WbfsFormat;
 import com.wbm.core.WbfsReader;
 import com.wbm.core.WbfsWriter;
+import com.wbm.core.rvz.RvzExtractor;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -149,7 +152,11 @@ public class ConversionService extends Service {
         total = 0;
         updateNotification();
         try {
-            if (g.wbfs) wbfsToIso(job); else isoToWbfs(job);
+            switch (g.kind) {
+                case WBFS: wbfsToIso(job); break;
+                case RVZ: rvzToWbfs(job); break;
+                default: isoToWbfs(job); break;
+            }
         } catch (CancelledException e) {
             results.add("CANCELADO  " + name);
         } catch (IOException | RuntimeException e) {
@@ -171,6 +178,45 @@ public class ConversionService extends Service {
     }
 
     private void isoToWbfs(Job job) throws IOException {
+        final ContentResolver cr = getContentResolver();
+        final Game g = job.game;
+        try (FileChannel in = Saf.openRead(cr, g.parts.get(0))) {
+            WbfsWriter.Result r = writeWbfsFromChannel(job, in, progress());
+            results.add("OK  " + g.displayTitle() + " [" + g.disc.id + "]: ISO " + Fmt.size(r.isoSize)
+                    + " → WBFS " + Fmt.size(r.wbfsSize));
+        }
+    }
+
+    /** RVZ/WIA: primero se reconstruye una ISO temporal en la memoria interna, luego se convierte igual que una ISO. */
+    private void rvzToWbfs(Job job) throws IOException {
+        final ContentResolver cr = getContentResolver();
+        final Game g = job.game;
+        File staging = new File(getCacheDir(), "rvz_staging_" + System.nanoTime() + ".iso");
+        try {
+            RvzExtractor.Result extractResult;
+            try (FileChannel rvzIn = Saf.openRead(cr, g.parts.get(0));
+                 FileChannel stageOut = FileChannel.open(staging.toPath(), StandardOpenOption.CREATE,
+                         StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.TRUNCATE_EXISTING)) {
+                extractResult = RvzExtractor.extract(rvzIn, stageOut, phaseProgress(0, 55));
+            }
+            if (!extractResult.hashMatches) {
+                results.add("AVISO  " + g.displayTitle() + " [" + g.disc.id + "]: la ISO reconstruida desde el "
+                        + "RVZ no coincide con el hash original guardado en el archivo; revisa el juego antes de "
+                        + "confiar en el resultado.");
+            }
+            try (FileChannel in = FileChannel.open(staging.toPath(), StandardOpenOption.READ)) {
+                WbfsWriter.Result r = writeWbfsFromChannel(job, in, phaseProgress(55, 100));
+                String tag = extractResult.hashMatches ? "OK" : "OK (sin verificar)";
+                results.add(tag + "  " + g.displayTitle() + " [" + g.disc.id + "]: RVZ " + Fmt.size(g.totalSize)
+                        + " → WBFS " + Fmt.size(r.wbfsSize));
+            }
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            staging.delete();
+        }
+    }
+
+    private WbfsWriter.Result writeWbfsFromChannel(Job job, FileChannel in, Progress prog) throws IOException {
         final ContentResolver cr = getContentResolver();
         final Game g = job.game;
         final Uri tree = job.tree;
@@ -198,20 +244,22 @@ public class ConversionService extends Service {
             return Saf.openWrite(cr, e.uri);
         };
 
-        try {
-            WbfsWriter.Result r;
-            int parts;
-            try (FileChannel in = Saf.openRead(cr, g.parts.get(0));
-                 SplitSink sink = new SplitSink(opener, job.split ? WbfsFormat.FAT32_SPLIT_SIZE : 0)) {
-                r = WbfsWriter.convert(in, sink, 0, progress());
-                parts = sink.partCount();
-            }
-            results.add("OK  " + g.displayTitle() + " [" + g.disc.id + "]: ISO " + Fmt.size(r.isoSize)
-                    + " → WBFS " + Fmt.size(r.wbfsSize) + (parts > 1 ? " (" + parts + " partes)" : ""));
+        try (SplitSink sink = new SplitSink(opener, job.split ? WbfsFormat.FAT32_SPLIT_SIZE : 0)) {
+            return WbfsWriter.convert(in, sink, 0, prog);
         } catch (IOException | RuntimeException e) {
             for (Uri u : created) Saf.deleteQuiet(cr, u);
             throw e;
         }
+    }
+
+    /** Envuelve el progreso real para que se muestre dentro del tramo [fromPct, toPct] de la barra. */
+    private Progress phaseProgress(int fromPct, int toPct) {
+        Progress inner = progress();
+        return (d, t) -> {
+            long scaledTotal = 1000;
+            long scaledDone = t > 0 ? (fromPct * 10L) + (d * (toPct - fromPct) * 10L) / t : fromPct * 10L;
+            return inner.update(scaledDone, scaledTotal);
+        };
     }
 
     private void wbfsToIso(Job job) throws IOException {

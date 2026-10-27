@@ -114,11 +114,21 @@ final class Saf {
         }
     }
 
-    /** Lee la cabecera del disco de una ISO o de un WBFS para mostrarla en la lista. */
-    static DiscInfo readDiscInfo(ContentResolver cr, Uri uri, boolean wbfs) throws IOException {
+    /** Lee la cabecera del disco de una ISO, un WBFS o un RVZ/WIA para mostrarla en la lista. */
+    static DiscInfo readDiscInfo(ContentResolver cr, Uri uri, Game.Kind kind) throws IOException {
         try (FileChannel ch = openRead(cr, uri)) {
+            if (kind == Game.Kind.RVZ) {
+                byte[] magic = new byte[4];
+                readFully(ch, 0, magic);
+                boolean rvz = magic[0] == 'R' && magic[1] == 'V' && magic[2] == 'Z' && magic[3] == 1;
+                boolean wia = magic[0] == 'W' && magic[1] == 'I' && magic[2] == 'A' && magic[3] == 1;
+                if (!rvz && !wia) throw new IOException("No es un RVZ/WIA válido");
+                byte[] h = new byte[0x80];
+                readFully(ch, 0x58, h);
+                return DiscInfo.parse(h);
+            }
             long pos = 0;
-            if (wbfs) {
+            if (kind == Game.Kind.WBFS) {
                 byte[] head = new byte[16];
                 readFully(ch, 0, head);
                 if (head[0] != 'W' || head[1] != 'B' || head[2] != 'F' || head[3] != 'S') {

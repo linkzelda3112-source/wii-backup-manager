@@ -12,13 +12,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 
-/** Recorre la carpeta elegida y reúne las ISO y WBFS de Wii que encuentra. */
+/** Recorre la carpeta elegida y reúne las ISO, WBFS y RVZ de Wii que encuentra. */
 final class LibraryScanner {
     private LibraryScanner() {}
 
     private static final int MAX_DEPTH = 5;
 
-    /** skipped[0] recibe cuántos .iso/.wbfs se ignoraron por no ser discos de Wii legibles. */
+    /** skipped[0] recibe cuántos .iso/.wbfs/.rvz se ignoraron por no ser discos de Wii legibles. */
     static List<Game> scan(ContentResolver cr, Uri tree, int[] skipped) {
         List<Game> out = new ArrayList<>();
         walk(cr, tree, DocumentsContract.getTreeDocumentId(tree), 0, out, skipped);
@@ -37,11 +37,13 @@ final class LibraryScanner {
                 continue;
             }
             String lower = e.name.toLowerCase(Locale.ROOT);
-            boolean iso = lower.endsWith(".iso");
-            boolean wbfs = lower.endsWith(".wbfs");
-            if (!iso && !wbfs) continue;
+            Game.Kind kind;
+            if (lower.endsWith(".wbfs")) kind = Game.Kind.WBFS;
+            else if (lower.endsWith(".iso")) kind = Game.Kind.ISO;
+            else if (lower.endsWith(".rvz") || lower.endsWith(".wia")) kind = Game.Kind.RVZ;
+            else continue;
             try {
-                DiscInfo d = Saf.readDiscInfo(cr, e.uri, wbfs);
+                DiscInfo d = Saf.readDiscInfo(cr, e.uri, kind);
                 if (!d.wii) {
                     skipped[0]++;
                     continue;
@@ -49,7 +51,7 @@ final class LibraryScanner {
                 List<Uri> parts = new ArrayList<>();
                 parts.add(e.uri);
                 long total = Math.max(e.size, 0);
-                if (wbfs) {
+                if (kind == Game.Kind.WBFS) {
                     String base = e.name.substring(0, e.name.length() - ".wbfs".length());
                     for (int i = 1; i < 100; i++) {
                         Saf.Entry p = find(entries, base + ".wbf" + i);
@@ -58,7 +60,7 @@ final class LibraryScanner {
                         total += Math.max(p.size, 0);
                     }
                 }
-                out.add(new Game(wbfs, e.name, parts, total, dirId, d));
+                out.add(new Game(kind, e.name, parts, total, dirId, d));
             } catch (IOException | RuntimeException ex) {
                 skipped[0]++;
             }
