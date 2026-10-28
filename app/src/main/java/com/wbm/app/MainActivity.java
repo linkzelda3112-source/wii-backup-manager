@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.content.UriPermission;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -34,7 +35,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-/** Pantalla principal: destino, biblioteca de juegos con carátulas, opciones, conversión y pestaña de donar. */
+/** Pantalla principal: destino, biblioteca de juegos (ISO/RVZ y WBFS por separado), conversión y pestaña de donar. */
 public class MainActivity extends Activity {
     private static final int REQ_DEST = 1;
     private static final int REQ_NOTIF = 2;
@@ -44,12 +45,38 @@ public class MainActivity extends Activity {
     private static final String KEY_TREE = "tree"; // guarda el destino elegido (USB/SD/carpeta)
     private static final String BBVA_ACCOUNT = "012 180 01538385555 8";
 
+    /** Una de las dos listas de juegos (ISO/RVZ por un lado, WBFS por otro), como en la app de Windows. */
+    private final class Section {
+        final List<Game> list = new ArrayList<>();
+        final Set<Integer> selected = new HashSet<>();
+        GameAdapter adapter;
+        GridView grid;
+        TextView empty;
+        String emptyMsg;
+
+        void rebuild() {
+            int cardWidth = grid.getWidth() > 0 ? grid.getWidth() / 3 : dp(100);
+            adapter = new GameAdapter(MainActivity.this, list, selected, cardWidth, MainActivity.this::updateConvertLabel,
+                    pos -> showInfo(list.get(pos)));
+            grid.setAdapter(adapter);
+            empty.setText(list.isEmpty() ? emptyMsg : "");
+            empty.setVisibility(list.isEmpty() ? View.VISIBLE : View.GONE);
+        }
+
+        void removeSelected() {
+            List<Integer> idx = new ArrayList<>(selected);
+            idx.sort((a, b) -> b - a);
+            for (int pos : idx) list.remove(pos);
+            selected.clear();
+        }
+    }
+
     private SharedPreferences prefs;
     /** Carpeta, USB (OTG) o SD donde se guardan los juegos convertidos. Se mantiene elegida entre sesiones. */
     private Uri destination;
-    private final List<Game> games = new ArrayList<>();
-    private final Set<Integer> selected = new HashSet<>();
-    private GameAdapter adapter;
+
+    private final Section isoSection = new Section();
+    private final Section wbfsSection = new Section();
 
     private LinearLayout libraryContainer;
     private LinearLayout donateContainer;
@@ -58,14 +85,11 @@ public class MainActivity extends Activity {
 
     private TextView destinationText;
     private TextView storageStatusText;
-    private TextView emptyText;
-    private GridView gridView;
     private CheckBox optLayout;
     private CheckBox optSplit;
     private CheckBox optPad;
     private Button convertBtn;
     private Button cancelBtn;
-    private Button removeBtn;
     private TextView progressText;
     private ProgressBar progressBar;
     private TextView logText;
@@ -73,7 +97,6 @@ public class MainActivity extends Activity {
     private StorageCheck.Info storageInfo;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private boolean wasRunning;
     private final Runnable poller = new Runnable() {
         @Override
         public void run() {
@@ -95,7 +118,8 @@ public class MainActivity extends Activity {
                 onDestinationChosen();
             }
         }
-        rebuildAdapter();
+        isoSection.rebuild();
+        wbfsSection.rebuild();
         updateDestinationText();
     }
 
@@ -163,6 +187,40 @@ public class MainActivity extends Activity {
         tabDonateBtn.setEnabled(library);
     }
 
+    private TextView sectionTitle(String text) {
+        TextView t = new TextView(this);
+        t.setText(text);
+        t.setTextSize(14);
+        t.setTypeface(null, Typeface.BOLD);
+        t.setPadding(0, dp(8), 0, dp(2));
+        return t;
+    }
+
+    /** Construye el bloque de una sección (ISO/RVZ o WBFS): título, cuadrícula propia y mensaje vacío. */
+    private LinearLayout buildSectionBlock(Section s, String title, String emptyMsg) {
+        s.emptyMsg = emptyMsg;
+        LinearLayout block = new LinearLayout(this);
+        block.setOrientation(LinearLayout.VERTICAL);
+        block.addView(sectionTitle(title));
+
+        FrameLayout listWrap = new FrameLayout(this);
+        s.grid = new GridView(this);
+        s.grid.setNumColumns(3);
+        s.grid.setVerticalSpacing(dp(4));
+        s.grid.setHorizontalSpacing(dp(4));
+        s.empty = new TextView(this);
+        s.empty.setGravity(Gravity.CENTER);
+        s.empty.setTextSize(12);
+        s.empty.setPadding(dp(12), dp(8), dp(12), dp(8));
+        listWrap.addView(s.grid, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        listWrap.addView(s.empty, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        block.addView(listWrap, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        return block;
+    }
+
     private LinearLayout buildLibraryTab() {
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
@@ -197,24 +255,14 @@ public class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.addView(button("Marcar todo", v -> selectAll()), weight());
-        removeBtn = button("Quitar de la lista", v -> removeSelected());
-        row.addView(removeBtn, weight());
+        row.addView(button("Quitar de la lista", v -> removeSelected()), weight());
         col.addView(row);
 
-        FrameLayout listWrap = new FrameLayout(this);
-        gridView = new GridView(this);
-        gridView.setNumColumns(3);
-        gridView.setVerticalSpacing(dp(4));
-        gridView.setHorizontalSpacing(dp(4));
-        emptyText = new TextView(this);
-        emptyText.setGravity(Gravity.CENTER);
-        emptyText.setPadding(dp(16), dp(16), dp(16), dp(16));
-        listWrap.addView(gridView, new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        listWrap.addView(emptyText, new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        col.addView(listWrap, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        // Dos secciones separadas, como en la app de Windows: ISO/RVZ (origen) y WBFS (ya convertidos).
+        col.addView(buildSectionBlock(isoSection, "ISO / RVZ  →  se convierten a WBFS",
+                "Sin juegos ISO/RVZ. Toca «Agregar juego» o «Escanear carpeta»."), weightTall());
+        col.addView(buildSectionBlock(wbfsSection, "WBFS  →  se pueden pasar a ISO",
+                "Sin juegos WBFS."), weightTall());
 
         optLayout = new CheckBox(this);
         optLayout.setText("Crear carpetas para cargador USB: wbfs/Título [ID]/ID.wbfs y games/Título [ID]/game.iso");
@@ -250,7 +298,7 @@ public class MainActivity extends Activity {
         logText.setTextSize(12);
         logScroll.addView(logText);
         col.addView(logScroll, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(90)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(70)));
 
         return col;
     }
@@ -291,6 +339,10 @@ public class MainActivity extends Activity {
         return new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
     }
 
+    private LinearLayout.LayoutParams weightTall() {
+        return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+    }
+
     private void updateDestinationText() {
         if (destination == null) {
             destinationText.setText("Destino: (sin elegir) — toca «Elegir destino» y marca tu USB OTG, SD o carpeta.");
@@ -299,17 +351,6 @@ public class MainActivity extends Activity {
             String seg = destination.getLastPathSegment();
             destinationText.setText("✓ Destino: " + (seg == null ? destination.toString() : Uri.decode(seg)));
             storageStatusText.setText(storageInfo != null ? storageInfo.statusText() : "");
-        }
-        updateEmptyText();
-    }
-
-    private void updateEmptyText() {
-        if (games.isEmpty()) {
-            emptyText.setText("Aún no agregaste juegos. Toca «Agregar juego (ISO/RVZ)» para elegir archivos, o "
-                    + "«Escanear carpeta» para sumar todos los que haya en una carpeta de una vez.");
-            emptyText.setVisibility(View.VISIBLE);
-        } else {
-            emptyText.setVisibility(View.GONE);
         }
     }
 
@@ -357,7 +398,7 @@ public class MainActivity extends Activity {
         i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/octet-stream"});
         i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        startActivityForResult(Intent.createChooser(i, "Elegir ISO o RVZ"), REQ_ADD_FILES);
+        startActivityForResult(Intent.createChooser(i, "Elegir ISO, RVZ o WBFS"), REQ_ADD_FILES);
     }
 
     private void handleAddedFiles(Intent data) {
@@ -412,61 +453,56 @@ public class MainActivity extends Activity {
         }, "wbm-scan").start();
     }
 
-    /** Agrega a la lista evitando duplicados (mismo archivo ya presente). */
+    /** Agrega cada juego a su sección (ISO/RVZ o WBFS) evitando duplicados (mismo archivo ya presente). */
     private void addGamesToList(List<Game> found) {
         if (found.isEmpty()) return;
         Set<Uri> already = new LinkedHashSet<>();
-        for (Game g : games) already.add(g.parts.get(0));
+        for (Game g : isoSection.list) already.add(g.parts.get(0));
+        for (Game g : wbfsSection.list) already.add(g.parts.get(0));
         int added = 0;
         for (Game g : found) {
-            if (already.add(g.parts.get(0))) {
-                games.add(g);
-                added++;
-            }
+            if (!already.add(g.parts.get(0))) continue;
+            (g.kind == Game.Kind.WBFS ? wbfsSection : isoSection).list.add(g);
+            added++;
         }
-        rebuildAdapter();
-        updateDestinationText();
+        isoSection.rebuild();
+        wbfsSection.rebuild();
         if (added > 0) {
             Toast.makeText(this, added + " juego(s) agregado(s).", Toast.LENGTH_SHORT).show();
         }
     }
 
+    /** Quita de la lista los juegos marcados (no borra los archivos originales). */
     private void removeSelected() {
-        if (selected.isEmpty()) {
+        if (isoSection.selected.isEmpty() && wbfsSection.selected.isEmpty()) {
             Toast.makeText(this, "Marca al menos un juego para quitarlo de la lista.", Toast.LENGTH_SHORT).show();
             return;
         }
-        List<Integer> idx = new ArrayList<>(selected);
-        idx.sort((a, b) -> b - a);
-        for (int pos : idx) games.remove(pos);
-        selected.clear();
-        rebuildAdapter();
-        updateDestinationText();
-        updateConvertLabel();
-    }
-
-    private void rebuildAdapter() {
-        int cardWidth = gridView.getWidth() > 0 ? gridView.getWidth() / 3 : dp(100);
-        adapter = new GameAdapter(this, games, selected, cardWidth, this::updateConvertLabel,
-                pos -> showInfo(games.get(pos)));
-        gridView.setAdapter(adapter);
+        isoSection.removeSelected();
+        wbfsSection.removeSelected();
+        isoSection.rebuild();
+        wbfsSection.rebuild();
         updateConvertLabel();
     }
 
     private void selectAll() {
-        if (games.isEmpty()) return;
-        boolean all = selected.size() == games.size();
-        selected.clear();
+        boolean all = isoSection.selected.size() == isoSection.list.size()
+                && wbfsSection.selected.size() == wbfsSection.list.size()
+                && (!isoSection.list.isEmpty() || !wbfsSection.list.isEmpty());
+        isoSection.selected.clear();
+        wbfsSection.selected.clear();
         if (!all) {
-            for (int i = 0; i < games.size(); i++) selected.add(i);
+            for (int i = 0; i < isoSection.list.size(); i++) isoSection.selected.add(i);
+            for (int i = 0; i < wbfsSection.list.size(); i++) wbfsSection.selected.add(i);
         }
-        if (adapter != null) adapter.notifyDataSetChanged();
+        if (isoSection.adapter != null) isoSection.adapter.notifyDataSetChanged();
+        if (wbfsSection.adapter != null) wbfsSection.adapter.notifyDataSetChanged();
         updateConvertLabel();
     }
 
     private void updateConvertLabel() {
-        convertBtn.setText(selected.isEmpty() ? "Convertir seleccionados"
-                : "Convertir " + selected.size() + " juego(s)");
+        int n = isoSection.selected.size() + wbfsSection.selected.size();
+        convertBtn.setText(n == 0 ? "Convertir seleccionados" : "Convertir " + n + " juego(s)");
     }
 
     private void showInfo(Game g) {
@@ -493,18 +529,20 @@ public class MainActivity extends Activity {
             return;
         }
         final List<ConversionService.Job> jobs = new ArrayList<>();
-        int toWbfs = 0;
-        int toIso = 0;
-        for (int pos : selected) {
-            Game g = games.get(pos);
-            jobs.add(new ConversionService.Job(g, destination, optLayout.isChecked(), optSplit.isChecked(),
-                    optPad.isChecked()));
-            if (g.kind == Game.Kind.WBFS) toIso++; else toWbfs++;
+        for (int pos : isoSection.selected) {
+            jobs.add(new ConversionService.Job(isoSection.list.get(pos), destination, optLayout.isChecked(),
+                    optSplit.isChecked(), optPad.isChecked()));
+        }
+        for (int pos : wbfsSection.selected) {
+            jobs.add(new ConversionService.Job(wbfsSection.list.get(pos), destination, optLayout.isChecked(),
+                    optSplit.isChecked(), optPad.isChecked()));
         }
         if (jobs.isEmpty()) {
             Toast.makeText(this, "Marca al menos un juego (toca su carátula).", Toast.LENGTH_SHORT).show();
             return;
         }
+        int toWbfs = isoSection.selected.size();
+        int toIso = wbfsSection.selected.size();
         String msg = (toWbfs > 0 ? toWbfs + " → WBFS (ISO/RVZ)\n" : "") + (toIso > 0 ? toIso + " WBFS → ISO\n" : "")
                 + "\nSe guardan en el destino elegido. Los archivos originales no se borran. "
                 + "La conversión sigue en segundo plano.";
@@ -520,8 +558,10 @@ public class MainActivity extends Activity {
         }
         ConversionService.enqueue(jobs);
         startForegroundService(new Intent(this, ConversionService.class));
-        selected.clear();
-        if (adapter != null) adapter.notifyDataSetChanged();
+        isoSection.selected.clear();
+        wbfsSection.selected.clear();
+        if (isoSection.adapter != null) isoSection.adapter.notifyDataSetChanged();
+        if (wbfsSection.adapter != null) wbfsSection.adapter.notifyDataSetChanged();
         updateConvertLabel();
         refreshProgress();
     }
@@ -547,6 +587,5 @@ public class MainActivity extends Activity {
         for (String r : ConversionService.results) sb.append(r).append('\n');
         String log = sb.toString();
         if (!log.contentEquals(logText.getText())) logText.setText(log);
-        wasRunning = running;
     }
 }
