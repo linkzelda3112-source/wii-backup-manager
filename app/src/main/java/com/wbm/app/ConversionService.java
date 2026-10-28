@@ -160,7 +160,7 @@ public class ConversionService extends Service {
         } catch (CancelledException e) {
             results.add("CANCELADO  " + name);
         } catch (IOException | RuntimeException e) {
-            results.add("ERROR  " + name + ": " + friendly(e));
+            results.add("ERROR  " + name + " (" + g.kindLabel() + "): " + friendly(e));
         }
     }
 
@@ -323,6 +323,21 @@ public class ConversionService extends Service {
         if (m.contains("EFBIG") || m.toLowerCase().contains("file too large")) {
             return "el sistema de archivos del destino no admite archivos tan grandes (FAT32 llega a 4 GB). "
                     + "Activa «Dividir WBFS en partes de 4 GB» o elige un destino exFAT/NTFS/interno.";
+        }
+        // Para errores inesperados (como un ArrayIndexOutOfBoundsException) se agrega el tipo de
+        // excepción y el punto exacto del código donde ocurrió: sin eso el mensaje por sí solo
+        // (p. ej. "length=35859; index=84017420") no dice nada útil para diagnosticar el problema.
+        if (e instanceof RuntimeException) {
+            StackTraceElement[] st = e.getStackTrace();
+            String where = "";
+            for (StackTraceElement el : st) {
+                if (el.getClassName().startsWith("com.wbm.")) {
+                    where = " — en " + el.getClassName().replace("com.wbm.", "") + "." + el.getMethodName()
+                            + ":" + el.getLineNumber();
+                    break;
+                }
+            }
+            return e.getClass().getSimpleName() + ": " + m + where;
         }
         return m;
     }
