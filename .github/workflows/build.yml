@@ -24,12 +24,20 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Pruebas unitarias del núcleo (ISO/WBFS y RVZ)
-        run: ./gradlew test --no-daemon
+        run: |
+          set -o pipefail
+          ./gradlew test --no-daemon --stacktrace 2>&1 | tee gradle-test-output.log
 
       - name: Si fallaron, guardar un resumen legible (se sube al repositorio)
         if: failure()
         shell: bash
-        run: python3 .github/workflows/summarize_test_failures.py > ci-failure.log
+        run: |
+          python3 .github/workflows/summarize_test_failures.py > ci-failure.log
+          echo >> ci-failure.log
+          echo "## Salida completa de Gradle (últimas 400 líneas)" >> ci-failure.log
+          echo '```' >> ci-failure.log
+          tail -n 400 gradle-test-output.log >> ci-failure.log
+          echo '```' >> ci-failure.log
 
       - name: Subir el resumen al repositorio
         if: failure()
