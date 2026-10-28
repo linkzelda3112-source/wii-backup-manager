@@ -4,8 +4,9 @@ Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA 
 
 ## Qué hace
 
-- Elige una carpeta, una memoria USB (OTG) o una tarjeta SD con tus juegos (busca también en subcarpetas) y muestra la carátula, ID, título, región, formato y tamaño en una cuadrícula.
-- Marca varios juegos y conviértelos por lotes: `.iso` y `.rvz`/`.wia` pasan a `.wbfs`; `.wbfs` pasa a `.iso`.
+- **Destino fijo**: elige una vez tu memoria USB (OTG), tarjeta SD o carpeta donde se guardan los juegos convertidos; queda seleccionado y se recuerda entre sesiones, como en Wii Backup Manager.
+- **Agregar juegos** por separado del destino: con «Agregar juego (ISO/RVZ)» eliges uno o varios archivos sueltos, o con «Escanear carpeta» sumas de golpe todos los que haya en una carpeta (y subcarpetas). Muestra carátula, ID, título, región, formato y tamaño en una cuadrícula.
+- Marca varios juegos y conviértelos por lotes: `.iso` y `.rvz`/`.wia` pasan a `.wbfs`; `.wbfs` pasa a `.iso`. El resultado siempre se guarda en el destino elegido.
 - Conversión sin pérdida: la ISO reconstruida desde el WBFS es idéntica byte a byte a la original.
 - **Soporte RVZ**: reconstruye la ISO original a partir de un `.rvz` (o `.wia`) de Dolphin, incluyendo la descompresión (Zstandard, LZMA/LZMA2, bzip2), el relleno de los datos de fábrica que RVZ no guarda y el recifrado de las particiones de Wii. Al terminar se verifica automáticamente que el resultado coincide con el hash que trae el propio archivo RVZ; si no coincide, la app avisa en vez de entregar un archivo dañado en silencio.
 - WBFS más pequeño: los bloques de 256 KiB que solo contienen ceros no se guardan.

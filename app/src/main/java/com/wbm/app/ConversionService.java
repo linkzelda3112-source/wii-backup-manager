@@ -229,7 +229,7 @@ public class ConversionService extends Service {
             parentId = Saf.ensureDir(cr, tree, wbfsDir.docId, g.folderName()).docId;
             baseName = g.disc.id;
         } else {
-            parentId = g.parentDocId;
+            parentId = rootId;
             baseName = g.folderName();
         }
         if (Saf.findChild(cr, tree, parentId, baseName + ".wbfs") != null) {
@@ -275,7 +275,7 @@ public class ConversionService extends Service {
             parentId = Saf.ensureDir(cr, tree, gamesDir.docId, g.folderName()).docId;
             fileName = "game.iso";
         } else {
-            parentId = g.parentDocId;
+            parentId = rootId;
             fileName = g.folderName() + ".iso";
         }
         if (Saf.findChild(cr, tree, parentId, fileName) != null) {
