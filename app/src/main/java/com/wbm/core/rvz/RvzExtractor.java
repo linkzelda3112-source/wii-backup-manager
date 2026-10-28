@@ -63,6 +63,7 @@ public final class RvzExtractor {
         GroupEntry[] groups = readGroups(in, h);
         RawDataEntry[] rawData = readRawData(in, h);
         PartEntry[] parts = h.isWiiDisc() ? readParts(in, h) : new PartEntry[0];
+        validateTables(h, groups, rawData, parts);
 
         long totalWork = h.isoFileSize;
         long[] done = {0};
@@ -81,6 +82,45 @@ public final class RvzExtractor {
 
         boolean matches = verifyHash(out, h);
         return new Result(matches, h.isoFileSize, exceptionsApplied[0]);
+    }
+
+    /**
+     * Comprueba que los índices de grupo de las tablas "raw data" y de particiones caen dentro de
+     * la tabla de grupos antes de usarlos. Si no (archivo con un formato distinto al esperado, o un
+     * error de lectura de la cabecera), se lanza un error con TODOS los campos de la cabecera en vez
+     * de dejar que revienten más adelante como un simple ArrayIndexOutOfBoundsException sin contexto.
+     */
+    private static void validateTables(RvzHeader h, GroupEntry[] groups, RawDataEntry[] rawData, PartEntry[] parts)
+            throws IOException {
+        for (int i = 0; i < rawData.length; i++) {
+            RawDataEntry rd = rawData[i];
+            if (rd.groupIndex < 0 || rd.nGroups < 0 || (long) rd.groupIndex + rd.nGroups > groups.length) {
+                throw new RvzUnpackException("Tabla RVZ/WIA inconsistente en raw_data[" + i + "]: groupIndex="
+                        + rd.groupIndex + " nGroups=" + rd.nGroups + " off=" + rd.off + " size=" + rd.size
+                        + " (hay " + groups.length + " grupos en total). " + headerDump(h));
+            }
+        }
+        for (int i = 0; i < parts.length; i++) {
+            PartEntry p = parts[i];
+            for (int seg = 0; seg < 2; seg++) {
+                if (p.groupIndex[seg] < 0 || p.nGroups[seg] < 0
+                        || (long) p.groupIndex[seg] + p.nGroups[seg] > groups.length) {
+                    throw new RvzUnpackException("Tabla RVZ/WIA inconsistente en partition[" + i + "].seg" + seg
+                            + ": groupIndex=" + p.groupIndex[seg] + " nGroups=" + p.nGroups[seg]
+                            + " firstSector=" + p.firstSector[seg] + " nSectors=" + p.nSectors[seg]
+                            + " (hay " + groups.length + " grupos en total). " + headerDump(h));
+                }
+            }
+        }
+    }
+
+    private static String headerDump(RvzHeader h) {
+        return "Cabecera: isWia=" + h.isWia + " isoFileSize=" + h.isoFileSize + " discType=" + h.discType
+                + " compression=" + h.compression + " chunkSize=" + h.chunkSize + " nPart=" + h.nPart
+                + " partTableEntrySize=" + h.partTableEntrySize + " partTableOff=" + h.partTableOff
+                + " nRawData=" + h.nRawData + " rawDataTableOff=" + h.rawDataTableOff + " nGroups=" + h.nGroups
+                + " groupTableOff=" + h.groupTableOff + " groupEntrySize=" + h.groupEntrySize
+                + " comprDataLen=" + h.comprDataLen;
     }
 
     // ---- lectura de las tablas del contenedor ----
