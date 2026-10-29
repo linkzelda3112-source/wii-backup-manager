@@ -6,6 +6,12 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.util.Arrays;
 import java.util.Random;
@@ -158,6 +164,86 @@ public class RvzCoreTest {
         byte[] decompressed = GroupDecompressor.decompress(GroupDecompressor.ZSTD, compressed,
                 original.length + (1 << 20), 0, new byte[7]);
         assertArrayEquals(original, decompressed);
+    }
+
+    /**
+     * Construye un archivo RVZ/WIA sintético (solo la cabecera) con WIADisc del tamaño que se pida
+     * y comprueba que RvzHeader.parse() lee cada campo del lugar correcto, tanto cuando disc_size
+     * coincide con el tamaño que conoce este lector (0xDC) como cuando es más corto (una versión
+     * más vieja del formato, con menos campos) — este es justo el caso que causaba el
+     * ArrayIndexOutOfBoundsException reportado por un usuario real al convertir un .rvz.
+     */
+    @Test
+    public void headerParsesRawDataAndGroupTablesWithFullDiscSize() throws Exception {
+        checkHeaderRoundTrip(0xDC);
+    }
+
+    @Test
+    public void headerParsesWithShorterDiscSizeFromOlderFormatVersion() throws Exception {
+        // Un disc_size que llega justo hasta el final de la tabla de grupos (sin los últimos
+        // campos de "tamaño por entrada" ni compressor_data): debe seguir leyendo bien las tablas.
+        checkHeaderRoundTrip(0xD0);
+    }
+
+    private void checkHeaderRoundTrip(int discSize) throws Exception {
+        long isoFileSize = 4_699_979_776L;
+        int discType = 2; // Wii
+        int compression = 5; // ZSTD
+        int chunkSize = 2 << 20;
+        int nPart = 1;
+        int partTableEntrySize = 48;
+        long partTableOff = 0x1000;
+        int nRawData = 2;
+        long rawDataTableOff = 0x2000;
+        int nGroups = 35858;
+        long groupTableOff = 0x3000;
+
+        byte[] disc = new byte[0xDC];
+        ByteBuffer d = ByteBuffer.wrap(disc).order(ByteOrder.BIG_ENDIAN);
+        d.putInt(0x00, discType);
+        d.putInt(0x04, compression);
+        d.putInt(0x0C, chunkSize);
+        d.putInt(0x90, nPart);
+        d.putInt(0x94, partTableEntrySize);
+        d.putLong(0x98, partTableOff);
+        d.putInt(0xB4, nRawData);
+        d.putLong(0xB8, rawDataTableOff);
+        d.putInt(0xC4, nGroups);
+        d.putLong(0xC8, groupTableOff);
+
+        byte[] head1 = new byte[0x48];
+        ByteBuffer h1 = ByteBuffer.wrap(head1).order(ByteOrder.BIG_ENDIAN);
+        head1[0] = 'R';
+        head1[1] = 'V';
+        head1[2] = 'Z';
+        head1[3] = 1;
+        h1.putInt(0x0C, discSize);
+        h1.putLong(0x24, isoFileSize);
+
+        File f = File.createTempFile("rvz-header-test", ".rvz");
+        f.deleteOnExit();
+        try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+            raf.write(head1);
+            raf.write(disc, 0, discSize); // el archivo real solo guarda discSize bytes, no 0xDC
+        }
+        try (FileChannel ch = FileChannel.open(f.toPath(), StandardOpenOption.READ)) {
+            RvzHeader h = RvzHeader.parse(ch);
+            assertEquals(isoFileSize, h.isoFileSize);
+            assertEquals(discType, h.discType);
+            assertEquals(compression, h.compression);
+            assertEquals(chunkSize, h.chunkSize);
+            assertEquals(nPart, h.nPart);
+            assertEquals(partTableEntrySize, h.partTableEntrySize);
+            assertEquals(partTableOff, h.partTableOff);
+            assertEquals(nRawData, h.nRawData);
+            assertEquals(rawDataTableOff, h.rawDataTableOff);
+            assertEquals(nGroups, h.nGroups);
+            assertEquals(groupTableOff, h.groupTableOff);
+            assertEquals(12, h.groupEntrySize); // RVZ
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            f.delete();
+        }
     }
 
     private static boolean anyNonZero(byte[] b) {
