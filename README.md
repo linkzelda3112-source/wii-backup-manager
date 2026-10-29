@@ -1,6 +1,6 @@
 # Wii Backup Manager para Android
 
-Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA y WBFS** directamente en el teléfono. Versión 0.0.6.
+Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA y WBFS** directamente en el teléfono. Versión 0.0.7.
 
 ## Qué hace
 
@@ -50,7 +50,7 @@ java -cp out CoreTest /ruta/de/trabajo
 
 Comprueba ISO → WBFS → ISO con SHA-256, WBFS dividido, tamaños no múltiplos del bloque, rechazo de GameCube y de archivos inválidos, partes que faltan y cancelación.
 
-El núcleo RVZ (`app/src/main/java/com/wbm/core/rvz/`) tiene sus propias pruebas en `app/src/test/java/...`, que corren con `./gradlew test` (las ejecuta también la compilación automática en GitHub Actions). Verifican el árbol de hashes, el cifrado AES, el generador de datos de relleno y la descompresión Zstandard; no incluyen un archivo `.rvz` real porque no se dispuso de uno para las pruebas.
+El núcleo RVZ (`app/src/main/java/com/wbm/core/rvz/`) tiene sus propias pruebas en `app/src/test/java/...`, que corren con `./gradlew test` (las ejecuta también la compilación automática en GitHub Actions). Verifican el árbol de hashes, el cifrado AES, el generador de datos de relleno, la descompresión Zstandard, y el formato de la cabecera (incluida la descompresión de las tablas `raw_data` y de grupos); también arman un archivo RVZ sintético completo de principio a fin y comprueban que se reconstruye byte a byte. No incluyen un archivo `.rvz` real de un juego porque no se dispuso de uno para las pruebas.
 
 ## Estructura
 

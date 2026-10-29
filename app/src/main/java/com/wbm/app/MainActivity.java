@@ -16,6 +16,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -285,13 +286,27 @@ public class MainActivity extends Activity {
         actions.addView(cancelBtn, weight());
         col.addView(actions);
 
+        // Línea de progreso compacta: barra delgada + texto en una sola fila (en vez de dos filas
+        // completas), para dejar el máximo espacio posible a las cuadrículas de arriba (y que se
+        // vean mejor las carátulas) y para no estrechar el botón de copiar registro que va justo
+        // debajo.
+        LinearLayout progressRow = new LinearLayout(this);
+        progressRow.setOrientation(LinearLayout.HORIZONTAL);
+        progressRow.setGravity(Gravity.CENTER_VERTICAL);
         progressBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         progressBar.setMax(1000);
-        col.addView(progressBar, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        progressRow.addView(progressBar, new LinearLayout.LayoutParams(0, dp(6), 1f));
         progressText = new TextView(this);
-        progressText.setTextSize(13);
-        col.addView(progressText);
+        progressText.setTextSize(11);
+        progressText.setSingleLine(true);
+        progressText.setEllipsize(TextUtils.TruncateAt.END);
+        progressText.setPadding(dp(6), 0, 0, 0);
+        progressRow.addView(progressText, new LinearLayout.LayoutParams(
+                dp(130), ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams progressRowParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        progressRowParams.setMargins(0, dp(2), 0, dp(2));
+        col.addView(progressRow, progressRowParams);
 
         LinearLayout logHeader = new LinearLayout(this);
         logHeader.setOrientation(LinearLayout.HORIZONTAL);

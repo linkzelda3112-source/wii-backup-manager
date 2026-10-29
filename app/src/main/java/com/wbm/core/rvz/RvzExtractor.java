@@ -118,17 +118,42 @@ public final class RvzExtractor {
         return "Cabecera: isWia=" + h.isWia + " isoFileSize=" + h.isoFileSize + " discType=" + h.discType
                 + " compression=" + h.compression + " chunkSize=" + h.chunkSize + " nPart=" + h.nPart
                 + " partTableEntrySize=" + h.partTableEntrySize + " partTableOff=" + h.partTableOff
-                + " nRawData=" + h.nRawData + " rawDataTableOff=" + h.rawDataTableOff + " nGroups=" + h.nGroups
-                + " groupTableOff=" + h.groupTableOff + " groupEntrySize=" + h.groupEntrySize
-                + " comprDataLen=" + h.comprDataLen;
+                + " nRawData=" + h.nRawData + " rawDataTableOff=" + h.rawDataTableOff
+                + " rawDataTableCompressedSize=" + h.rawDataTableCompressedSize + " nGroups=" + h.nGroups
+                + " groupTableOff=" + h.groupTableOff + " groupTableCompressedSize=" + h.groupTableCompressedSize
+                + " groupEntrySize=" + h.groupEntrySize + " comprDataLen=" + h.comprDataLen;
     }
 
     // ---- lectura de las tablas del contenedor ----
 
+    /**
+     * Lee "compressedSize" bytes en compressedOff y los descomprime con el mismo algoritmo de todo
+     * el archivo (de un solo tirón, sin trocear por grupos de 2 MiB como los datos del disco): así
+     * es como el formato WIA/RVZ guarda las tablas de raw_data y de grupos. Leerlas directo, sin
+     * descomprimir, es justo lo que causaba que groupIndex/off/size salieran con valores absurdos
+     * (eran bytes comprimidos interpretados como si fueran enteros).
+     */
+    private static byte[] readCompressedTable(FileChannel in, RvzHeader h, long compressedOff, int compressedSize,
+            int expectedUncompressedSize, String tableName) throws IOException {
+        if (compressedSize <= 0) {
+            throw new RvzUnpackException("Tamaño comprimido inválido para la tabla " + tableName + ": "
+                    + compressedSize);
+        }
+        byte[] compressed = new byte[compressedSize];
+        IoUtil.readFully(in, compressedOff, compressed);
+        byte[] out = GroupDecompressor.decompress(h.compression, compressed, expectedUncompressedSize,
+                h.comprDataLen, h.comprData);
+        if (out.length != expectedUncompressedSize) {
+            throw new RvzUnpackException("La tabla " + tableName + " descomprimió a " + out.length
+                    + " bytes; se esperaban " + expectedUncompressedSize + ".");
+        }
+        return out;
+    }
+
     private static GroupEntry[] readGroups(FileChannel in, RvzHeader h) throws IOException {
         GroupEntry[] arr = new GroupEntry[h.nGroups];
-        byte[] raw = new byte[h.nGroups * h.groupEntrySize];
-        IoUtil.readFully(in, h.groupTableOff, raw);
+        byte[] raw = readCompressedTable(in, h, h.groupTableOff, h.groupTableCompressedSize,
+                h.nGroups * h.groupEntrySize, "de grupos");
         ByteBuffer b = ByteBuffer.wrap(raw).order(ByteOrder.BIG_ENDIAN);
         for (int i = 0; i < h.nGroups; i++) {
             GroupEntry g = new GroupEntry();
@@ -151,8 +176,8 @@ public final class RvzExtractor {
 
     private static RawDataEntry[] readRawData(FileChannel in, RvzHeader h) throws IOException {
         RawDataEntry[] arr = new RawDataEntry[h.nRawData];
-        byte[] raw = new byte[h.nRawData * 24];
-        IoUtil.readFully(in, h.rawDataTableOff, raw);
+        byte[] raw = readCompressedTable(in, h, h.rawDataTableOff, h.rawDataTableCompressedSize,
+                h.nRawData * 24, "de raw_data");
         ByteBuffer b = ByteBuffer.wrap(raw).order(ByteOrder.BIG_ENDIAN);
         for (int i = 0; i < h.nRawData; i++) {
             RawDataEntry r = new RawDataEntry();

@@ -208,8 +208,10 @@ public class RvzCoreTest {
         d.putLong(0x98, partTableOff);
         d.putInt(0xB4, nRawData);
         d.putLong(0xB8, rawDataTableOff);
+        d.putInt(0xC0, nRawData * 24); // tamaño comprimido de la tabla raw_data (aquí, sin comprimir)
         d.putInt(0xC4, nGroups);
         d.putLong(0xC8, groupTableOff);
+        d.putInt(0xD0, nGroups * 12); // tamaño comprimido de la tabla de grupos (RVZ, sin comprimir)
 
         byte[] head1 = new byte[0x48];
         ByteBuffer h1 = ByteBuffer.wrap(head1).order(ByteOrder.BIG_ENDIAN);
@@ -237,13 +239,126 @@ public class RvzCoreTest {
             assertEquals(partTableOff, h.partTableOff);
             assertEquals(nRawData, h.nRawData);
             assertEquals(rawDataTableOff, h.rawDataTableOff);
+            assertEquals(nRawData * 24, h.rawDataTableCompressedSize);
             assertEquals(nGroups, h.nGroups);
             assertEquals(groupTableOff, h.groupTableOff);
             assertEquals(12, h.groupEntrySize); // RVZ
+            if (discSize >= 0xD4) {
+                // con un disc_size más corto este campo queda truncado (relleno con ceros), como el
+                // resto de los campos que no caben; no es el caso que se prueba aquí.
+                assertEquals(nGroups * 12, h.groupTableCompressedSize);
+            }
         } finally {
             //noinspection ResultOfMethodCallIgnored
             f.delete();
         }
+    }
+
+    /**
+     * Reconstruye un disco de GameCube sintético completo de principio a fin: arma un archivo RVZ
+     * a mano (cabecera, tabla raw_data y tabla de grupos, SIN comprimir, más los datos de los
+     * grupos) y comprueba que RvzExtractor.extract() produce exactamente la ISO original.
+     *
+     * Esta es la prueba de extremo a extremo que faltaba para el bug real reportado por un usuario:
+     * las tablas raw_data y de grupos se guardan COMPRIMIDAS en el archivo (de un solo tirón, con
+     * el mismo algoritmo de todo el archivo), no como bytes planos. Antes de corregirlo, este
+     * lector las interpretaba directamente sin descomprimir, así que groupIndex/off/size salían
+     * con valores sin sentido en cuanto el archivo no era trivialmente pequeño. Se usa un disco de
+     * GameCube (no Wii) para no tener que construir también particiones cifradas de Wii aquí; esa
+     * parte la cubren las otras pruebas (hashTreeAndCryptoRoundTrip, etc.).
+     */
+    @Test
+    public void extractGameCubeDiscWithUncompressedTables() throws Exception {
+        Random r = new Random(2024);
+        int isoSize = 200_000;
+        byte[] iso = new byte[isoSize];
+        r.nextBytes(iso);
+        int chunkSize = 65536;
+        int nGroups = (isoSize + chunkSize - 1) / chunkSize; // 4
+
+        // --- tabla de grupos: cada entrada referencia un trozo de "iso" sin comprimir ---
+        ByteArrayOutputStream groupTable = new ByteArrayOutputStream();
+        ByteArrayOutputStream groupData = new ByteArrayOutputStream();
+        long groupDataBase = 0x124 + 24 /* raw_data table: 1 entrada */ + (long) nGroups * 12;
+        assertEquals(0, groupDataBase % 4); // data_off4 exige múltiplos de 4
+        for (int i = 0; i < nGroups; i++) {
+            int off = i * chunkSize;
+            int len = Math.min(chunkSize, isoSize - off);
+            long fileOff = groupDataBase + groupData.size();
+            writeBE(groupTable, (int) (fileOff / 4));
+            writeBE(groupTable, len); // bit alto = 0 -> no comprimido
+            writeBE(groupTable, 0); // packedSize
+            groupData.write(iso, off, len);
+        }
+
+        // --- tabla raw_data: una sola entrada que cubre todo el disco ---
+        ByteArrayOutputStream rawDataTable = new ByteArrayOutputStream();
+        writeBE64(rawDataTable, 0);
+        writeBE64(rawDataTable, isoSize);
+        writeBE(rawDataTable, 0); // groupIndex
+        writeBE(rawDataTable, nGroups);
+
+        MessageDigest sha1 = MessageDigest.getInstance("SHA-1");
+        byte[] isoHash = sha1.digest(iso);
+
+        byte[] disc = new byte[0xDC];
+        ByteBuffer d = ByteBuffer.wrap(disc).order(ByteOrder.BIG_ENDIAN);
+        d.putInt(0x00, 1); // GameCube: así no hace falta simular particiones cifradas de Wii
+        d.putInt(0x04, GroupDecompressor.NONE);
+        d.putInt(0x0C, chunkSize);
+        d.putInt(0x90, 0); // nPart
+        d.putLong(0x98, 0);
+        d.putInt(0xB4, 1); // nRawData
+        d.putLong(0xB8, 0x124);
+        d.putInt(0xC0, rawDataTable.size());
+        d.putInt(0xC4, nGroups);
+        d.putLong(0xC8, 0x124 + rawDataTable.size());
+        d.putInt(0xD0, groupTable.size());
+
+        byte[] head1 = new byte[0x48];
+        ByteBuffer h1 = ByteBuffer.wrap(head1).order(ByteOrder.BIG_ENDIAN);
+        head1[0] = 'R';
+        head1[1] = 'V';
+        head1[2] = 'Z';
+        head1[3] = 1;
+        h1.putInt(0x0C, disc.length);
+        h1.putLong(0x24, isoSize);
+        h1.position(0x10);
+        h1.put(isoHash);
+
+        File f = File.createTempFile("rvz-e2e-test", ".rvz");
+        f.deleteOnExit();
+        File outIso = File.createTempFile("rvz-e2e-out", ".iso");
+        outIso.deleteOnExit();
+        try (RandomAccessFile raf = new RandomAccessFile(f, "rw")) {
+            raf.write(head1);
+            raf.write(disc);
+            raf.write(rawDataTable.toByteArray());
+            raf.write(groupTable.toByteArray());
+            raf.write(groupData.toByteArray());
+        }
+        try (FileChannel in = FileChannel.open(f.toPath(), StandardOpenOption.READ);
+             FileChannel out = FileChannel.open(outIso.toPath(), StandardOpenOption.CREATE,
+                     StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.TRUNCATE_EXISTING)) {
+            RvzExtractor.Result result = RvzExtractor.extract(in, out, null);
+            assertTrue("el hash reconstruido debe coincidir con el original", result.hashMatches);
+            assertEquals(isoSize, result.isoSize);
+
+            byte[] rebuilt = new byte[isoSize];
+            out.position(0);
+            ByteBuffer bb = ByteBuffer.wrap(rebuilt);
+            while (bb.hasRemaining()) out.read(bb);
+            assertArrayEquals(iso, rebuilt);
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            f.delete();
+            //noinspection ResultOfMethodCallIgnored
+            outIso.delete();
+        }
+    }
+
+    private static void writeBE64(ByteArrayOutputStream out, long v) {
+        for (int shift = 56; shift >= 0; shift -= 8) out.write((int) ((v >>> shift) & 0xFF));
     }
 
     private static boolean anyNonZero(byte[] b) {

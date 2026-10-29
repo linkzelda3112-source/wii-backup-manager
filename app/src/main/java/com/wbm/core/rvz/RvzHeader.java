@@ -15,6 +15,11 @@ import java.nio.channels.FileChannel;
  * guardar una versión más corta de WIADisc, y uno más nuevo una más larga con campos que no
  * conocemos). Si se asume siempre un tamaño fijo, un archivo con un disc_size distinto hace que
  * se lean como campos de la cabecera bytes que en realidad son de otra sección del archivo.
+ *
+ * Importante: la tabla de particiones (wia_part_t) se guarda SIN comprimir, pero las tablas de
+ * raw_data (wia_raw_data_t) y de grupos (wia_group_t) se guardan COMPRIMIDAS como un solo bloque
+ * (con el mismo algoritmo de todo el archivo, sin trocear en grupos de 2 MiB como los datos del
+ * disco); hay que descomprimirlas antes de interpretarlas (ver RvzExtractor.readRawData/readGroups).
  */
 final class RvzHeader {
     /** sizeof(WIADisc) con todos los campos que conoce este lector. */
@@ -35,9 +40,11 @@ final class RvzHeader {
 
     int nRawData;
     long rawDataTableOff;
+    int rawDataTableCompressedSize;
 
     int nGroups;
     long groupTableOff;
+    int groupTableCompressedSize;
     int groupEntrySize; // 8 (WIA) o 12 (RVZ)
 
     int comprDataLen;
@@ -93,12 +100,15 @@ final class RvzHeader {
 
         h.nRawData = b.getInt(0xB4);
         h.rawDataTableOff = b.getLong(0xB8);
-        // 0xC0: tamaño en bytes de cada entrada de la tabla raw_data — siempre 24, no se usa.
+        // La tabla raw_data se guarda COMPRIMIDA (con el mismo algoritmo de todo el archivo, de un
+        // tirón, sin trocear en grupos); este campo es su tamaño comprimido en bytes.
+        h.rawDataTableCompressedSize = b.getInt(0xC0);
 
         h.nGroups = b.getInt(0xC4);
         h.groupTableOff = b.getLong(0xC8);
         h.groupEntrySize = h.isWia ? 8 : 12;
-        // 0xD0: tamaño en bytes de cada entrada de grupo — ya lo sabemos por isWia, no se usa.
+        // Igual que raw_data: la tabla de grupos también se guarda comprimida de un tirón.
+        h.groupTableCompressedSize = b.getInt(0xD0);
 
         h.comprDataLen = disc[0xD4] & 0xFF;
         b.position(0xD5);
