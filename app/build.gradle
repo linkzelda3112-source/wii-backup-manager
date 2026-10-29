@@ -10,8 +10,8 @@ android {
         applicationId "com.wbm.wiibackupmanager"
         minSdk 26
         targetSdk 35
-        versionCode 7
-        versionName "0.0.7"
+        versionCode 8
+        versionName "0.0.8"
     }
 
     buildTypes {
@@ -29,7 +29,15 @@ android {
 dependencies {
     // Descompresión de archivos RVZ (Dolphin usa Zstandard por defecto; LZMA/LZMA2/bzip2 son
     // alternativas más raras que también admite el formato).
-    implementation 'com.github.luben:zstd-jni:1.5.6-6'
+    //
+    // Para Zstandard se usa aircompressor (implementación en Java puro, sin JNI/librería nativa)
+    // y NO zstd-jni: zstd-jni solo empaqueta bibliotecas nativas para Linux/macOS/Windows de
+    // escritorio (glibc), no para Android (bionic), así que al llamarla en un teléfono lanza
+    // java.lang.UnsatisfiedLinkError — un Error, no una Exception, que no queda atrapado por los
+    // try/catch de la app y cierra la aplicación entera (justo el "se cierra la app al convertir
+    // RVZ" reportado por un usuario real; antes nunca se llegaba a esta llamada porque fallaba
+    // antes, al leer mal las tablas del archivo).
+    implementation 'io.airlift:aircompressor:2.0.2'
     implementation 'org.tukaani:xz:1.9'
     implementation 'org.apache.commons:commons-compress:1.26.2'
 

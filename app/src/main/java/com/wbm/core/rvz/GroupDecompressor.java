@@ -1,6 +1,6 @@
 package com.wbm.core.rvz;
 
-import com.github.luben.zstd.Zstd;
+import io.airlift.compress.zstd.ZstdDecompressor;
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import org.tukaani.xz.LZMA2InputStream;
 import org.tukaani.xz.LZMAInputStream;
@@ -36,8 +36,13 @@ final class GroupDecompressor {
             switch (compression) {
                 case NONE:
                     return src;
-                case ZSTD:
-                    return Zstd.decompress(src, maxOutputLen);
+                case ZSTD: {
+                    // Java puro (aircompressor), no JNI: ver la nota en build.gradle sobre por qué
+                    // no se usa zstd-jni aquí.
+                    byte[] out = new byte[maxOutputLen];
+                    int written = new ZstdDecompressor().decompress(src, 0, src.length, out, 0, out.length);
+                    return written == out.length ? out : java.util.Arrays.copyOf(out, written);
+                }
                 case BZIP2:
                     return readAll(new BZip2CompressorInputStream(new ByteArrayInputStream(src)));
                 case LZMA: {

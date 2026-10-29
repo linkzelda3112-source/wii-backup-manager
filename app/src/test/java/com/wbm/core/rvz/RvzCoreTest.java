@@ -160,7 +160,10 @@ public class RvzCoreTest {
         r.nextBytes(original);
         for (int i = 0; i < original.length; i += 7) original[i] = 0; // algo de redundancia
 
-        byte[] compressed = com.github.luben.zstd.Zstd.compress(original, 9);
+        io.airlift.compress.zstd.ZstdCompressor c = new io.airlift.compress.zstd.ZstdCompressor();
+        byte[] compressedBuf = new byte[c.maxCompressedLength(original.length)];
+        int compressedLen = c.compress(original, 0, original.length, compressedBuf, 0, compressedBuf.length);
+        byte[] compressed = Arrays.copyOf(compressedBuf, compressedLen);
         byte[] decompressed = GroupDecompressor.decompress(GroupDecompressor.ZSTD, compressed,
                 original.length + (1 << 20), 0, new byte[7]);
         assertArrayEquals(original, decompressed);
