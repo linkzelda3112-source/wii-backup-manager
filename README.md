@@ -1,6 +1,6 @@
 # Wii Backup Manager para Android
 
-Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA y WBFS** directamente en el teléfono. Versión 0.0.5.
+Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA y WBFS** directamente en el teléfono. Versión 0.0.6.
 
 ## Qué hace
 

@@ -293,9 +293,20 @@ public class MainActivity extends Activity {
         progressText.setTextSize(13);
         col.addView(progressText);
 
+        LinearLayout logHeader = new LinearLayout(this);
+        logHeader.setOrientation(LinearLayout.HORIZONTAL);
+        logHeader.setGravity(Gravity.CENTER_VERTICAL);
+        TextView logTitle = new TextView(this);
+        logTitle.setText("Registro:");
+        logTitle.setTextSize(12);
+        logHeader.addView(logTitle, weight());
+        logHeader.addView(button("Copiar registro", v -> copyLog()));
+        col.addView(logHeader);
+
         ScrollView logScroll = new ScrollView(this);
         logText = new TextView(this);
         logText.setTextSize(12);
+        logText.setTextIsSelectable(true); // para poder marcar y copiar un error puntual a mano
         logScroll.addView(logText);
         col.addView(logScroll, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(70)));
@@ -392,10 +403,13 @@ public class MainActivity extends Activity {
     // ---------------------------------------------------------------- agregar juegos
 
     private void addGameFiles() {
+        // No se restringe por tipo MIME: muchos administradores de archivos no marcan los .iso/.rvz
+        // como "application/octet-stream" (o usan otro tipo, o ninguno), así que con esa restricción
+        // aparecían bloqueados en el selector. En su lugar se deja elegir cualquier archivo y se
+        // descarta por extensión al leerlo (ver LibraryScanner.fromSingleDocument).
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         i.addCategory(Intent.CATEGORY_OPENABLE);
         i.setType("*/*");
-        i.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/octet-stream"});
         i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(Intent.createChooser(i, "Elegir ISO, RVZ o WBFS"), REQ_ADD_FILES);
@@ -564,6 +578,17 @@ public class MainActivity extends Activity {
         if (wbfsSection.adapter != null) wbfsSection.adapter.notifyDataSetChanged();
         updateConvertLabel();
         refreshProgress();
+    }
+
+    private void copyLog() {
+        CharSequence text = logText.getText();
+        if (text == null || text.length() == 0) {
+            Toast.makeText(this, "Todavía no hay nada en el registro.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(ClipData.newPlainText("Registro de conversión", text));
+        Toast.makeText(this, "Registro copiado.", Toast.LENGTH_SHORT).show();
     }
 
     private void refreshProgress() {
