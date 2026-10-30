@@ -3,6 +3,7 @@ package com.wbm.app;
 import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.ActivityNotFoundException;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
@@ -17,6 +18,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.View;
@@ -369,6 +371,18 @@ public class MainActivity extends Activity {
         col.addView(sectionTitle("Actualizaciones"));
         col.addView(button("Buscar actualizaciones ahora", v -> UpdateChecker.checkAndNotify(this, true)));
 
+        col.addView(sectionTitle("Utilidades"));
+        TextView formatNote = new TextView(this);
+        formatNote.setTextSize(12);
+        formatNote.setTextColor(BTN_TEXT);
+        formatNote.setText("Ninguna app normal de Android puede formatear una memoria ella misma (hace falta "
+                + "root). Este botón solo abre los ajustes de almacenamiento del teléfono para que tú elijas tu "
+                + "USB OTG o tarjeta SD ahí y le des «Formatear» — así nunca se puede tocar por accidente el "
+                + "almacenamiento interno, porque la app nunca formatea nada directamente.");
+        formatNote.setPadding(0, dp(2), 0, dp(4));
+        col.addView(formatNote);
+        col.addView(button("Formatear USB/SD a FAT32 (abre Ajustes)", v -> openStorageSettings()));
+
         LinearLayout logHeader = new LinearLayout(this);
         logHeader.setOrientation(LinearLayout.HORIZONTAL);
         logHeader.setGravity(Gravity.CENTER_VERTICAL);
@@ -653,6 +667,24 @@ public class MainActivity extends Activity {
         if (wbfsSection.adapter != null) wbfsSection.adapter.notifyDataSetChanged();
         updateConvertLabel();
         refreshProgress();
+    }
+
+    /** Abre los ajustes de almacenamiento del teléfono para formatear una USB/SD a mano. Android no
+     *  le da a ninguna app normal permiso para formatear memorias (hace falta root o ser una app del
+     *  sistema), así que esto solo navega a la pantalla correcta — nunca formatea nada por sí misma,
+     *  y por lo tanto nunca puede tocar el almacenamiento interno por accidente. */
+    private void openStorageSettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS));
+        } catch (ActivityNotFoundException e) {
+            try {
+                startActivity(new Intent(Settings.ACTION_SETTINGS));
+                Toast.makeText(this, "Busca «Almacenamiento» → tu USB o SD → «Formatear».", Toast.LENGTH_LONG).show();
+            } catch (ActivityNotFoundException e2) {
+                Toast.makeText(this, "No se encontraron los ajustes de almacenamiento en este teléfono.",
+                        Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     private void copyLog() {

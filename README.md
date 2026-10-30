@@ -1,6 +1,6 @@
 # Wii Backup Manager para Android
 
-Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA y WBFS** directamente en el teléfono. Versión 0.1.1.
+Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA y WBFS** directamente en el teléfono. Versión 0.1.2.
 
 ## Qué hace
 
@@ -19,6 +19,7 @@ Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA 
 - Tres pestañas: **🎃 Biblioteca** (destino, agregar juegos y las dos cuadrículas, con el máximo espacio posible para las carátulas), **🦇 Ajustes** (opciones de conversión y el registro de conversión/errores, con su botón «Copiar registro») y **👻 Donar**.
 - Estilo inspirado en el menú de Wii: fondo celeste y botones compactos en tarjetas blancas redondeadas con borde celeste, para que sobre el mínimo espacio posible y las carátulas se vean lo más grandes que se pueda.
 - Avisa si hay una versión más nueva: al abrir la app consulta en silencio el último Release de este repositorio en GitHub, y si hay una versión más nueva que la instalada, muestra un aviso con un botón para abrir la página y descargarla (no pasa nada si no hay internet: simplemente no avisa). También hay un botón «Buscar actualizaciones ahora» en la pestaña Ajustes para revisar cuando quieras.
+- Botón «Formatear USB/SD a FAT32» en Ajustes → Utilidades: Android no deja que ninguna app normal formatee una memoria (hace falta root), así que este botón solo abre los ajustes de almacenamiento del teléfono para que elijas ahí tu USB OTG o SD y le des «Formatear» — la app nunca formatea nada directamente, así que nunca puede tocar por accidente el almacenamiento interno.
 
 ## Cómo compilar el APK
 
