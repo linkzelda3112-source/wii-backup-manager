@@ -46,6 +46,13 @@ public class MainActivity extends Activity {
     private static final String KEY_TREE = "tree"; // guarda el destino elegido (USB/SD/carpeta)
     private static final String BBVA_ACCOUNT = "012 180 01538385555 8";
 
+    // --- Ambientación de Halloween: fondo oscuro casi negro/morado, botones naranja calabaza. ---
+    private static final int BG_DARK = Color.parseColor("#140A1F");
+    private static final int CARD_PURPLE = Color.argb(60, 106, 13, 173); // morado translúcido
+    private static final int BTN_ORANGE = Color.parseColor("#FF7518");
+    private static final int BTN_ORANGE_TEXT = Color.parseColor("#1A0A00");
+    private static final int ACCENT_ORANGE = Color.parseColor("#FF7518");
+
     /** Una de las dos listas de juegos (ISO/RVZ por un lado, WBFS por otro), como en la app de Windows. */
     private final class Section {
         final List<Game> list = new ArrayList<>();
@@ -124,6 +131,9 @@ public class MainActivity extends Activity {
         isoSection.rebuild();
         wbfsSection.rebuild();
         updateDestinationText();
+        // En silencio: si no hay nada nuevo, o falla la consulta (sin internet, etc.), no molesta
+        // con ningún aviso. Solo avisa cuando sí hay una versión más nueva publicada en GitHub.
+        UpdateChecker.checkAndNotify(this, false);
     }
 
     @Override
@@ -149,11 +159,19 @@ public class MainActivity extends Activity {
         return Math.round(v * getResources().getDisplayMetrics().density);
     }
 
+    /** Botón compacto (el tamaño grande de Android sobraba espacio que ahora usan las carátulas),
+     *  en naranja calabaza para la ambientación de Halloween. */
     private Button button(String text, View.OnClickListener l) {
         Button b = new Button(this);
         b.setText(text);
         b.setAllCaps(false);
         b.setOnClickListener(l);
+        b.setTextSize(13);
+        b.setMinimumHeight(0);
+        b.setMinimumWidth(0);
+        b.setPadding(dp(10), dp(4), dp(10), dp(4));
+        b.setBackgroundColor(BTN_ORANGE);
+        b.setTextColor(BTN_ORANGE_TEXT);
         return b;
     }
 
@@ -163,12 +181,13 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12), dp(8), dp(12), dp(8));
+        root.setBackgroundColor(BG_DARK);
 
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabLibraryBtn = button("Biblioteca", v -> showTab(0));
-        tabSettingsBtn = button("Ajustes", v -> showTab(1));
-        tabDonateBtn = button("Donar", v -> showTab(2));
+        tabLibraryBtn = button("🎃 Biblioteca", v -> showTab(0));
+        tabSettingsBtn = button("🦇 Ajustes", v -> showTab(1));
+        tabDonateBtn = button("👻 Donar", v -> showTab(2));
         tabs.addView(tabLibraryBtn, weight());
         tabs.addView(tabSettingsBtn, weight());
         tabs.addView(tabDonateBtn, weight());
@@ -203,6 +222,7 @@ public class MainActivity extends Activity {
         t.setText(text);
         t.setTextSize(14);
         t.setTypeface(null, Typeface.BOLD);
+        t.setTextColor(ACCENT_ORANGE);
         t.setPadding(0, dp(8), 0, dp(2));
         return t;
     }
@@ -241,7 +261,7 @@ public class MainActivity extends Activity {
         LinearLayout destBox = new LinearLayout(this);
         destBox.setOrientation(LinearLayout.VERTICAL);
         destBox.setPadding(dp(8), dp(8), dp(8), dp(8));
-        destBox.setBackgroundColor(Color.argb(28, 33, 150, 243));
+        destBox.setBackgroundColor(CARD_PURPLE);
 
         destinationText = new TextView(this);
         destinationText.setTextSize(14);
@@ -331,6 +351,9 @@ public class MainActivity extends Activity {
         col.addView(optLayout);
         col.addView(optSplit);
         col.addView(optPad);
+
+        col.addView(sectionTitle("Actualizaciones"));
+        col.addView(button("Buscar actualizaciones ahora", v -> UpdateChecker.checkAndNotify(this, true)));
 
         LinearLayout logHeader = new LinearLayout(this);
         logHeader.setOrientation(LinearLayout.HORIZONTAL);
