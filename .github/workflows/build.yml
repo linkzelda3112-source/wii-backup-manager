@@ -76,8 +76,8 @@ jobs:
       - name: Publicar como Release descargable
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.0
-          name: Wii Backup Manager v0.1.0
+          tag_name: v0.1.1
+          name: Wii Backup Manager v0.1.1
           body: >
             APK de depuración, generado automáticamente desde el último cambio en main.
             Descarga wii-backup-manager.apk y ábrelo para instalar.

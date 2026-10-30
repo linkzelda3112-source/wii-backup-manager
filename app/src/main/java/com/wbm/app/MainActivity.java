@@ -11,6 +11,7 @@ import android.content.UriPermission;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -46,12 +47,14 @@ public class MainActivity extends Activity {
     private static final String KEY_TREE = "tree"; // guarda el destino elegido (USB/SD/carpeta)
     private static final String BBVA_ACCOUNT = "012 180 01538385555 8";
 
-    // --- Ambientación de Halloween: fondo oscuro casi negro/morado, botones naranja calabaza. ---
-    private static final int BG_DARK = Color.parseColor("#140A1F");
-    private static final int CARD_PURPLE = Color.argb(60, 106, 13, 173); // morado translúcido
-    private static final int BTN_ORANGE = Color.parseColor("#FF7518");
-    private static final int BTN_ORANGE_TEXT = Color.parseColor("#1A0A00");
-    private static final int ACCENT_ORANGE = Color.parseColor("#FF7518");
+    // --- Ambientación estilo menú de Wii: fondo celeste claro, botones blancos redondeados con
+    // borde y texto azul, como los canales del menú de la consola. ---
+    private static final int BG_WII = Color.parseColor("#BFE6FB");
+    private static final int CARD_WHITE = Color.parseColor("#F2FBFF");
+    private static final int BTN_FILL = Color.parseColor("#FFFFFF");
+    private static final int BTN_BORDER = Color.parseColor("#5FB6E8");
+    private static final int BTN_TEXT = Color.parseColor("#0B5A86");
+    private static final int ACCENT_BLUE = Color.parseColor("#0B5A86");
 
     /** Una de las dos listas de juegos (ISO/RVZ por un lado, WBFS por otro), como en la app de Windows. */
     private final class Section {
@@ -159,8 +162,8 @@ public class MainActivity extends Activity {
         return Math.round(v * getResources().getDisplayMetrics().density);
     }
 
-    /** Botón compacto (el tamaño grande de Android sobraba espacio que ahora usan las carátulas),
-     *  en naranja calabaza para la ambientación de Halloween. */
+    /** Botón compacto (el tamaño grande de Android sobraba espacio que ahora usan las carátulas):
+     *  una tarjeta blanca redondeada con borde celeste, como los canales del menú de Wii. */
     private Button button(String text, View.OnClickListener l) {
         Button b = new Button(this);
         b.setText(text);
@@ -169,9 +172,13 @@ public class MainActivity extends Activity {
         b.setTextSize(13);
         b.setMinimumHeight(0);
         b.setMinimumWidth(0);
-        b.setPadding(dp(10), dp(4), dp(10), dp(4));
-        b.setBackgroundColor(BTN_ORANGE);
-        b.setTextColor(BTN_ORANGE_TEXT);
+        b.setPadding(dp(10), dp(6), dp(10), dp(6));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(BTN_FILL);
+        bg.setCornerRadius(dp(10));
+        bg.setStroke(dp(1), BTN_BORDER);
+        b.setBackground(bg);
+        b.setTextColor(BTN_TEXT);
         return b;
     }
 
@@ -181,13 +188,13 @@ public class MainActivity extends Activity {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12), dp(8), dp(12), dp(8));
-        root.setBackgroundColor(BG_DARK);
+        root.setBackgroundColor(BG_WII);
 
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabLibraryBtn = button("🎃 Biblioteca", v -> showTab(0));
-        tabSettingsBtn = button("🦇 Ajustes", v -> showTab(1));
-        tabDonateBtn = button("👻 Donar", v -> showTab(2));
+        tabLibraryBtn = button("Biblioteca", v -> showTab(0));
+        tabSettingsBtn = button("Ajustes", v -> showTab(1));
+        tabDonateBtn = button("Donar", v -> showTab(2));
         tabs.addView(tabLibraryBtn, weight());
         tabs.addView(tabSettingsBtn, weight());
         tabs.addView(tabDonateBtn, weight());
@@ -222,7 +229,7 @@ public class MainActivity extends Activity {
         t.setText(text);
         t.setTextSize(14);
         t.setTypeface(null, Typeface.BOLD);
-        t.setTextColor(ACCENT_ORANGE);
+        t.setTextColor(ACCENT_BLUE);
         t.setPadding(0, dp(8), 0, dp(2));
         return t;
     }
@@ -261,10 +268,15 @@ public class MainActivity extends Activity {
         LinearLayout destBox = new LinearLayout(this);
         destBox.setOrientation(LinearLayout.VERTICAL);
         destBox.setPadding(dp(8), dp(8), dp(8), dp(8));
-        destBox.setBackgroundColor(CARD_PURPLE);
+        GradientDrawable destBg = new GradientDrawable();
+        destBg.setColor(CARD_WHITE);
+        destBg.setCornerRadius(dp(10));
+        destBg.setStroke(dp(1), BTN_BORDER);
+        destBox.setBackground(destBg);
 
         destinationText = new TextView(this);
         destinationText.setTextSize(14);
+        destinationText.setTextColor(BTN_TEXT);
         destBox.addView(destinationText);
 
         storageStatusText = new TextView(this);
@@ -279,7 +291,7 @@ public class MainActivity extends Activity {
         LinearLayout addRow = new LinearLayout(this);
         addRow.setOrientation(LinearLayout.HORIZONTAL);
         addRow.setPadding(0, dp(8), 0, dp(4));
-        addRow.addView(button("Agregar juego (ISO/RVZ)", v -> addGameFiles()), weight());
+        addRow.addView(button("Agregar juego (ISO/RVZ beta)", v -> addGameFiles()), weight());
         addRow.addView(button("Escanear carpeta", v -> scanFolder()), weight());
         col.addView(addRow);
 
@@ -293,7 +305,9 @@ public class MainActivity extends Activity {
         // Son lo más importante de esta pestaña (para que se vean bien las carátulas), así que todo
         // lo que no hace falta ver todo el tiempo (opciones de conversión, registro de errores) se
         // movió a la pestaña «Ajustes».
-        col.addView(buildSectionBlock(isoSection, "ISO / RVZ  →  se convierten a WBFS",
+        // El soporte de RVZ es beta: no se probó todavía con todos los archivos reales posibles, así
+        // que se marca para que quede claro que la conversión puede fallar con algunos juegos.
+        col.addView(buildSectionBlock(isoSection, "ISO / RVZ (beta, puede fallar)  →  se convierten a WBFS",
                 "Sin juegos ISO/RVZ. Toca «Agregar juego» o «Escanear carpeta»."), weightTall());
         col.addView(buildSectionBlock(wbfsSection, "WBFS  →  se pueden pasar a ISO",
                 "Sin juegos WBFS."), weightTall());

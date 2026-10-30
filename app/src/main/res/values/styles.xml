@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Tema oscuro para la ambientación de Halloween (fondo casi negro / morado muy oscuro);
-         los colores exactos de botones y acentos (naranja calabaza) se ponen desde el código, en
-         MainActivity, porque toda la interfaz se arma ahí mismo en vez de con XML de layout. -->
-    <style name="AppTheme" parent="android:Theme.Material">
-        <item name="android:windowBackground">#140A1F</item>
-        <item name="android:colorBackground">#140A1F</item>
-        <item name="android:colorAccent">#FF7518</item>
+    <!-- Tema claro para la ambientación estilo menú de Wii (fondo celeste, tarjetas/botones
+         blancos); los colores exactos se ponen desde el código, en MainActivity, porque toda la
+         interfaz se arma ahí mismo en vez de con XML de layout. -->
+    <style name="AppTheme" parent="android:Theme.Material.Light.DarkActionBar">
+        <item name="android:windowBackground">#BFE6FB</item>
+        <item name="android:colorBackground">#BFE6FB</item>
+        <item name="android:colorAccent">#0B5A86</item>
     </style>
 </resources>

@@ -1,6 +1,6 @@
 # Wii Backup Manager para Android
 
-Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA y WBFS** directamente en el teléfono. Versión 0.1.0.
+Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA y WBFS** directamente en el teléfono. Versión 0.1.1.
 
 ## Qué hace
 
@@ -8,7 +8,7 @@ Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA 
 - **Agregar juegos** por separado del destino: con «Agregar juego (ISO/RVZ)» eliges uno o varios archivos sueltos, o con «Escanear carpeta» sumas de golpe todos los que haya en una carpeta (y subcarpetas). Muestra carátula, ID, título, región, formato y tamaño en una cuadrícula.
 - Marca varios juegos y conviértelos por lotes: `.iso` y `.rvz`/`.wia` pasan a `.wbfs`; `.wbfs` pasa a `.iso`. El resultado siempre se guarda en el destino elegido.
 - Conversión sin pérdida: la ISO reconstruida desde el WBFS es idéntica byte a byte a la original.
-- **Soporte RVZ**: reconstruye la ISO original a partir de un `.rvz` (o `.wia`) de Dolphin, incluyendo la descompresión (Zstandard, LZMA/LZMA2, bzip2), el relleno de los datos de fábrica que RVZ no guarda y el recifrado de las particiones de Wii. Al terminar se verifica automáticamente que el resultado coincide con el hash que trae el propio archivo RVZ; si no coincide, la app avisa en vez de entregar un archivo dañado en silencio.
+- **Soporte RVZ (beta)**: reconstruye la ISO original a partir de un `.rvz` (o `.wia`) de Dolphin, incluyendo la descompresión (Zstandard, LZMA/LZMA2, bzip2), el relleno de los datos de fábrica que RVZ no guarda y el recifrado de las particiones de Wii. Es la parte más nueva y menos probada de la app (se marca como «beta» en la propia pantalla): al terminar se verifica automáticamente que el resultado coincide con el hash que trae el propio archivo RVZ, y si no coincide, o si algo falla a medio camino, la app avisa en vez de entregar un archivo dañado en silencio o cerrarse.
 - WBFS más pequeño: los bloques de 256 KiB que solo contienen ceros no se guardan.
 - Divide el WBFS en partes de 4 GB (`.wbfs`, `.wbf1`, `.wbf2`…) para tarjetas FAT32, y lee WBFS divididos. Al elegir la carpeta, la app intenta detectar si es FAT32, exFAT o NTFS y activa la división automáticamente cuando hace falta.
 - Crea la estructura que esperan los cargadores USB: `wbfs/Título [ID]/ID.wbfs` y `games/Título [ID]/game.iso`.
@@ -17,7 +17,7 @@ Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA 
 - Nunca borra ni sobrescribe tus archivos originales.
 - Mantén pulsada la carátula de un juego para ver su información.
 - Tres pestañas: **🎃 Biblioteca** (destino, agregar juegos y las dos cuadrículas, con el máximo espacio posible para las carátulas), **🦇 Ajustes** (opciones de conversión y el registro de conversión/errores, con su botón «Copiar registro») y **👻 Donar**.
-- Ambientación de Halloween: fondo oscuro y botones compactos en naranja calabaza, para que sobre el mínimo espacio posible y las carátulas se vean lo más grandes que se pueda.
+- Estilo inspirado en el menú de Wii: fondo celeste y botones compactos en tarjetas blancas redondeadas con borde celeste, para que sobre el mínimo espacio posible y las carátulas se vean lo más grandes que se pueda.
 - Avisa si hay una versión más nueva: al abrir la app consulta en silencio el último Release de este repositorio en GitHub, y si hay una versión más nueva que la instalada, muestra un aviso con un botón para abrir la página y descargarla (no pasa nada si no hay internet: simplemente no avisa). También hay un botón «Buscar actualizaciones ahora» en la pestaña Ajustes para revisar cuando quieras.
 
 ## Cómo compilar el APK
