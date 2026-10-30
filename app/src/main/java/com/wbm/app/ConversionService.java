@@ -123,7 +123,15 @@ public class ConversionService extends Service {
                     job = QUEUE.remove(0);
                 }
                 jobIndex++;
-                process(job);
+                try {
+                    process(job);
+                } catch (Throwable e) {
+                    // process() ya atrapa todo lo que puede pasar al convertir un juego; esto es
+                    // un segundo seguro por si acaso, para que ningún error, sea cual sea, tire
+                    // abajo toda la app: mejor seguir con el siguiente juego de la cola.
+                    results.add("ERROR  " + job.game.displayTitle() + " [" + job.game.disc.id + "]: "
+                            + friendly(e));
+                }
                 if (cancelRequested) {
                     synchronized (QUEUE) {
                         QUEUE.clear();
@@ -159,7 +167,12 @@ public class ConversionService extends Service {
             }
         } catch (CancelledException e) {
             results.add("CANCELADO  " + name);
-        } catch (IOException | RuntimeException e) {
+        } catch (Throwable e) {
+            // Throwable (no solo Exception/RuntimeException) a propósito: un error inesperado aquí
+            // (p. ej. un UnsatisfiedLinkError de una librería nativa, o un OutOfMemoryError con un
+            // disco muy grande) es un Error, no una Exception, y un Error sin atrapar mata la app
+            // entera en vez de mostrarse como un error en el registro. Mejor mostrar el error y
+            // seguir con el siguiente juego de la cola que cerrar toda la aplicación.
             results.add("ERROR  " + name + " (" + g.kindLabel() + "): " + friendly(e));
         }
     }
@@ -315,7 +328,7 @@ public class ConversionService extends Service {
         }
     }
 
-    private static String friendly(Exception e) {
+    private static String friendly(Throwable e) {
         String m = String.valueOf(e.getMessage());
         if (m.contains("ENOSPC") || m.toLowerCase().contains("no space")) {
             return "no hay espacio suficiente en el destino.";
@@ -324,10 +337,11 @@ public class ConversionService extends Service {
             return "el sistema de archivos del destino no admite archivos tan grandes (FAT32 llega a 4 GB). "
                     + "Activa «Dividir WBFS en partes de 4 GB» o elige un destino exFAT/NTFS/interno.";
         }
-        // Para errores inesperados (como un ArrayIndexOutOfBoundsException) se agrega el tipo de
-        // excepción y el punto exacto del código donde ocurrió: sin eso el mensaje por sí solo
-        // (p. ej. "length=35859; index=84017420") no dice nada útil para diagnosticar el problema.
-        if (e instanceof RuntimeException) {
+        // Para errores inesperados (como un ArrayIndexOutOfBoundsException, o un Error que antes
+        // cerraba la app entera) se agrega el tipo exacto y el punto del código donde ocurrió: sin
+        // eso el mensaje por sí solo (p. ej. "length=35859; index=84017420") no dice nada útil para
+        // diagnosticar el problema.
+        if (e instanceof RuntimeException || e instanceof Error) {
             StackTraceElement[] st = e.getStackTrace();
             String where = "";
             for (StackTraceElement el : st) {

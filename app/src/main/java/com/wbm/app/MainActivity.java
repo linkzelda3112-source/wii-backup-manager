@@ -80,8 +80,10 @@ public class MainActivity extends Activity {
     private final Section wbfsSection = new Section();
 
     private LinearLayout libraryContainer;
+    private LinearLayout settingsContainer;
     private LinearLayout donateContainer;
     private Button tabLibraryBtn;
+    private Button tabSettingsBtn;
     private Button tabDonateBtn;
 
     private TextView destinationText;
@@ -164,28 +166,36 @@ public class MainActivity extends Activity {
 
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabLibraryBtn = button("Biblioteca", v -> showTab(true));
-        tabDonateBtn = button("Donar", v -> showTab(false));
+        tabLibraryBtn = button("Biblioteca", v -> showTab(0));
+        tabSettingsBtn = button("Ajustes", v -> showTab(1));
+        tabDonateBtn = button("Donar", v -> showTab(2));
         tabs.addView(tabLibraryBtn, weight());
+        tabs.addView(tabSettingsBtn, weight());
         tabs.addView(tabDonateBtn, weight());
         root.addView(tabs);
 
         libraryContainer = buildLibraryTab();
+        settingsContainer = buildSettingsTab();
         donateContainer = buildDonateTab();
         root.addView(libraryContainer, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(settingsContainer, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
         root.addView(donateContainer, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         setContentView(root);
-        showTab(true);
+        showTab(0);
     }
 
-    private void showTab(boolean library) {
-        libraryContainer.setVisibility(library ? View.VISIBLE : View.GONE);
-        donateContainer.setVisibility(library ? View.GONE : View.VISIBLE);
-        tabLibraryBtn.setEnabled(!library);
-        tabDonateBtn.setEnabled(library);
+    /** 0 = Biblioteca, 1 = Ajustes (opciones de conversión + registro de errores), 2 = Donar. */
+    private void showTab(int tab) {
+        libraryContainer.setVisibility(tab == 0 ? View.VISIBLE : View.GONE);
+        settingsContainer.setVisibility(tab == 1 ? View.VISIBLE : View.GONE);
+        donateContainer.setVisibility(tab == 2 ? View.VISIBLE : View.GONE);
+        tabLibraryBtn.setEnabled(tab != 0);
+        tabSettingsBtn.setEnabled(tab != 1);
+        tabDonateBtn.setEnabled(tab != 2);
     }
 
     private TextView sectionTitle(String text) {
@@ -260,22 +270,13 @@ public class MainActivity extends Activity {
         col.addView(row);
 
         // Dos secciones separadas, como en la app de Windows: ISO/RVZ (origen) y WBFS (ya convertidos).
+        // Son lo más importante de esta pestaña (para que se vean bien las carátulas), así que todo
+        // lo que no hace falta ver todo el tiempo (opciones de conversión, registro de errores) se
+        // movió a la pestaña «Ajustes».
         col.addView(buildSectionBlock(isoSection, "ISO / RVZ  →  se convierten a WBFS",
                 "Sin juegos ISO/RVZ. Toca «Agregar juego» o «Escanear carpeta»."), weightTall());
         col.addView(buildSectionBlock(wbfsSection, "WBFS  →  se pueden pasar a ISO",
                 "Sin juegos WBFS."), weightTall());
-
-        optLayout = new CheckBox(this);
-        optLayout.setText("Crear carpetas para cargador USB: wbfs/Título [ID]/ID.wbfs y games/Título [ID]/game.iso");
-        optLayout.setChecked(true);
-        optSplit = new CheckBox(this);
-        optSplit.setText("Dividir WBFS en partes de 4 GB (necesario en FAT32)");
-        optPad = new CheckBox(this);
-        optPad.setText("Al crear ISO, rellenar hasta el tamaño estándar de Wii");
-        optPad.setChecked(true);
-        col.addView(optLayout);
-        col.addView(optSplit);
-        col.addView(optPad);
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -308,12 +309,34 @@ public class MainActivity extends Activity {
         progressRowParams.setMargins(0, dp(2), 0, dp(2));
         col.addView(progressRow, progressRowParams);
 
+        return col;
+    }
+
+    /** Pestaña «Ajustes»: opciones de conversión y registro de errores — no hace falta verlos todo
+     *  el tiempo, así que viven aparte y dejan más espacio en «Biblioteca» para las carátulas. */
+    private LinearLayout buildSettingsTab() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(0, dp(8), 0, 0);
+
+        col.addView(sectionTitle("Opciones de conversión"));
+        optLayout = new CheckBox(this);
+        optLayout.setText("Crear carpetas para cargador USB: wbfs/Título [ID]/ID.wbfs y games/Título [ID]/game.iso");
+        optLayout.setChecked(true);
+        optSplit = new CheckBox(this);
+        optSplit.setText("Dividir WBFS en partes de 4 GB (necesario en FAT32)");
+        optPad = new CheckBox(this);
+        optPad.setText("Al crear ISO, rellenar hasta el tamaño estándar de Wii");
+        optPad.setChecked(true);
+        col.addView(optLayout);
+        col.addView(optSplit);
+        col.addView(optPad);
+
         LinearLayout logHeader = new LinearLayout(this);
         logHeader.setOrientation(LinearLayout.HORIZONTAL);
         logHeader.setGravity(Gravity.CENTER_VERTICAL);
-        TextView logTitle = new TextView(this);
-        logTitle.setText("Registro:");
-        logTitle.setTextSize(12);
+        logHeader.setPadding(0, dp(16), 0, 0);
+        TextView logTitle = sectionTitle("Registro de conversión / errores");
         logHeader.addView(logTitle, weight());
         logHeader.addView(button("Copiar registro", v -> copyLog()));
         col.addView(logHeader);
@@ -324,7 +347,7 @@ public class MainActivity extends Activity {
         logText.setTextIsSelectable(true); // para poder marcar y copiar un error puntual a mano
         logScroll.addView(logText);
         col.addView(logScroll, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(70)));
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         return col;
     }
