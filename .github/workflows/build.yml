@@ -73,19 +73,30 @@ jobs:
       - name: Renombrar APK con la fecha
         run: cp app/build/outputs/apk/debug/app-debug.apk wii-backup-manager.apk
 
+      - name: Preparar el changelog (mensaje del commit sin las líneas de atribución interna)
+        id: changelog
+        shell: bash
+        run: |
+          {
+            echo "message<<CHANGELOG_EOF"
+            git log -1 --pretty=%B | grep -vE '^(Co-Authored-By:|Claude-Session:)'
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Publicar como Release descargable
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.3
-          name: Wii Backup Manager v0.1.3
-          # El cuerpo del Release es el propio mensaje del commit que lo generó: cada actualización
-          # se sube con una descripción de qué cambió y por qué, así que esto se usa tal cual como
-          # registro de cambios de cada versión (lo muestra el botón "🔔 Novedades" dentro de la app).
+          tag_name: v0.1.4
+          name: Wii Backup Manager v0.1.4
+          # El cuerpo del Release es el propio mensaje del commit que lo generó (sin las líneas de
+          # atribución interna, filtradas en el paso de arriba): cada actualización se sube con una
+          # descripción de qué cambió y por qué, así que esto se usa tal cual como registro de
+          # cambios de cada versión (lo muestra el botón "🔔 Novedades" dentro de la app).
           body: |
             Descarga wii-backup-manager.apk y ábrelo para instalar (APK de depuración, generado
             automáticamente desde este cambio en main).
 
-            ${{ github.event.head_commit.message }}
+            ${{ steps.changelog.outputs.message }}
           files: wii-backup-manager.apk
           make_latest: true
         env:
