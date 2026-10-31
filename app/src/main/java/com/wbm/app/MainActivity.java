@@ -97,6 +97,15 @@ public class MainActivity extends Activity {
     private Button tabLibraryBtn;
     private Button tabSettingsBtn;
     private Button tabDonateBtn;
+    private Button notifBtn;
+    // Estado del botón de notificaciones: avisa tanto de actualizaciones como de errores de
+    // conversión (lo que pidió el usuario), dando prioridad visual al error (rojo) sobre el
+    // aviso de actualización (amarillo) porque es lo más urgente de los dos.
+    private boolean updateAlertPending = false;
+    private boolean errorAlertPending = false;
+    private String pendingUpdateVersion = null;
+    private final StringBuilder recentErrorsLog = new StringBuilder();
+    private int lastResultsSeen = 0;
 
     private TextView destinationText;
     private TextView storageStatusText;
@@ -137,8 +146,13 @@ public class MainActivity extends Activity {
         wbfsSection.rebuild();
         updateDestinationText();
         // En silencio: si no hay nada nuevo, o falla la consulta (sin internet, etc.), no molesta
-        // con ningún aviso. Solo avisa cuando sí hay una versión más nueva publicada en GitHub.
-        UpdateChecker.checkAndNotify(this, false);
+        // con ningún aviso. Solo avisa (con el diálogo, y marcando el botón de arriba) cuando sí hay
+        // una versión más nueva publicada en GitHub.
+        UpdateChecker.checkAndNotify(this, false, (latest, htmlUrl) -> {
+            pendingUpdateVersion = latest;
+            updateAlertPending = true;
+            updateNotifBadge();
+        });
     }
 
     @Override
@@ -191,6 +205,15 @@ public class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12), dp(8), dp(12), dp(8));
         root.setBackgroundColor(BG_WII);
+
+        // Pequeño botón de notificaciones arriba de todo: avisa (cambiando de texto/color) si hay
+        // una actualización disponible, y siempre deja ver el registro de cambios de cada versión.
+        LinearLayout notifRow = new LinearLayout(this);
+        notifRow.setOrientation(LinearLayout.HORIZONTAL);
+        notifRow.setPadding(0, 0, 0, dp(4));
+        notifBtn = button("🔔 Novedades", v -> onNotifClicked());
+        notifRow.addView(notifBtn);
+        root.addView(notifRow);
 
         LinearLayout tabs = new LinearLayout(this);
         tabs.setOrientation(LinearLayout.HORIZONTAL);
@@ -687,6 +710,47 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Pinta el botón de notificaciones según lo que haya pendiente: un error de conversión (rojo,
+     *  máxima prioridad porque es lo más urgente) o una actualización disponible (amarillo); si no
+     *  hay nada pendiente, vuelve al estilo normal. */
+    private void updateNotifBadge() {
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(10));
+        bg.setStroke(dp(1), BTN_BORDER);
+        if (errorAlertPending) {
+            notifBtn.setText("🔔 ¡Hubo un error!");
+            bg.setColor(Color.parseColor("#F8B4B4")); // rojo de aviso
+        } else if (updateAlertPending) {
+            notifBtn.setText("🔔 ¡Actualización v" + pendingUpdateVersion + "!");
+            bg.setColor(Color.parseColor("#FFF3B0")); // amarillo de aviso
+        } else {
+            notifBtn.setText("🔔 Novedades");
+            bg.setColor(BTN_FILL);
+        }
+        notifBtn.setBackground(bg);
+    }
+
+    /** Al tocar el botón: si hay errores recientes sin ver, los muestra primero (quitando el
+     *  aviso); si no, va directo al registro de novedades de cada versión. El aviso de
+     *  actualización se apaga siempre al tocar el botón, porque el propio registro de novedades
+     *  ya incluye la versión más nueva. */
+    private void onNotifClicked() {
+        boolean hadErrors = errorAlertPending;
+        updateAlertPending = false;
+        errorAlertPending = false;
+        updateNotifBadge();
+        if (hadErrors) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Errores recientes de conversión")
+                    .setMessage(recentErrorsLog.toString())
+                    .setPositiveButton("Ver novedades de cada versión", (d, w) -> UpdateChecker.showChangelog(this))
+                    .setNegativeButton("Cerrar", null)
+                    .show();
+        } else {
+            UpdateChecker.showChangelog(this);
+        }
+    }
+
     private void copyLog() {
         CharSequence text = logText.getText();
         if (text == null || text.length() == 0) {
@@ -719,5 +783,22 @@ public class MainActivity extends Activity {
         for (String r : ConversionService.results) sb.append(r).append('\n');
         String log = sb.toString();
         if (!log.contentEquals(logText.getText())) logText.setText(log);
+
+        // Revisa solo las líneas nuevas desde la última vez para no repetir el aviso del mismo
+        // error una y otra vez mientras el botón sigue marcado.
+        java.util.List<String> results = ConversionService.results;
+        boolean newError = false;
+        for (int i = lastResultsSeen; i < results.size(); i++) {
+            String r = results.get(i);
+            if (r.startsWith("ERROR")) {
+                recentErrorsLog.append(r).append("\n\n");
+                newError = true;
+            }
+        }
+        lastResultsSeen = results.size();
+        if (newError) {
+            errorAlertPending = true;
+            updateNotifBadge();
+        }
     }
 }

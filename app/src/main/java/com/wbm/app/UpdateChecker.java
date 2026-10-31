@@ -7,6 +7,7 @@ import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
 
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -20,34 +21,37 @@ import java.nio.charset.StandardCharsets;
  * Avisa si hay una versión más nueva publicada como Release en GitHub que la instalada, leyendo
  * directamente la API pública de GitHub (no hace falta ningún servidor propio). Se usa tanto al
  * abrir la app (en silencio, solo si hay algo nuevo) como desde un botón en Ajustes (mostrando
- * también el resultado cuando ya está al día o cuando no se pudo consultar).
+ * también el resultado cuando ya está al día o cuando no se pudo consultar), y también para
+ * mostrar el registro de cambios de cada versión publicada desde el botón de Novedades.
  */
 final class UpdateChecker {
     private static final String REPO = "linkzelda3112-source/wii-backup-manager";
-    private static final String API_URL = "https://api.github.com/repos/" + REPO + "/releases/latest";
+    private static final String API_LATEST_URL = "https://api.github.com/repos/" + REPO + "/releases/latest";
+    private static final String API_LIST_URL = "https://api.github.com/repos/" + REPO + "/releases?per_page=15";
     private static final String FALLBACK_URL = "https://github.com/" + REPO + "/releases/latest";
 
     private UpdateChecker() {}
 
-    /** @param manual si viene de un botón: entonces también avisa cuando ya está al día o si falla. */
+    /** Avisa (en el botón de Novedades) cuando se encuentra una versión más nueva que la instalada. */
+    interface OnUpdateFound {
+        void onFound(String latestVersion, String htmlUrl);
+    }
+
     static void checkAndNotify(MainActivity activity, boolean manual) {
+        checkAndNotify(activity, manual, null);
+    }
+
+    /** @param manual si viene de un botón: entonces también avisa cuando ya está al día o si falla.
+     *  @param onFound opcional: se llama en el hilo principal si hay una versión más nueva. */
+    static void checkAndNotify(MainActivity activity, boolean manual, OnUpdateFound onFound) {
         new Thread(() -> {
             String current = currentVersionName(activity);
             try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(API_URL).openConnection();
-                conn.setRequestProperty("Accept", "application/vnd.github+json");
-                // La API de GitHub exige un User-Agent; sin uno, responde 403.
-                conn.setRequestProperty("User-Agent", "wii-backup-manager-app");
-                conn.setConnectTimeout(8000);
-                conn.setReadTimeout(8000);
-                int code = conn.getResponseCode();
-                if (code != 200) {
-                    if (manual) {
-                        notifyPlain(activity, "No se pudo consultar GitHub (código " + code + ").");
-                    }
+                String body = httpGet(API_LATEST_URL);
+                if (body == null) {
+                    if (manual) notifyPlain(activity, "No se pudo consultar GitHub.");
                     return;
                 }
-                String body = readAll(conn.getInputStream());
                 JSONObject json = new JSONObject(body);
                 String tag = json.optString("tag_name", "");
                 String htmlUrl = json.optString("html_url", FALLBACK_URL);
@@ -57,6 +61,7 @@ final class UpdateChecker {
                 }
                 String latest = tag.startsWith("v") || tag.startsWith("V") ? tag.substring(1) : tag;
                 if (isNewer(latest, current)) {
+                    if (onFound != null) runOnUi(activity, () -> onFound.onFound(latest, htmlUrl));
                     notifyNewVersion(activity, latest, current, htmlUrl);
                 } else if (manual) {
                     notifyPlain(activity, "Ya tienes la última versión (" + current + ").");
@@ -67,6 +72,54 @@ final class UpdateChecker {
                 }
             }
         }, "wbm-update-check").start();
+    }
+
+    /** Muestra, en un diálogo, el nombre y la descripción de cada versión publicada en GitHub
+     *  (lo que se escribió como mensaje del commit de cada actualización). */
+    static void showChangelog(MainActivity activity) {
+        new Thread(() -> {
+            try {
+                String body = httpGet(API_LIST_URL);
+                if (body == null) {
+                    notifyPlain(activity, "No se pudo consultar el historial de versiones en GitHub.");
+                    return;
+                }
+                JSONArray releases = new JSONArray(body);
+                if (releases.length() == 0) {
+                    notifyPlain(activity, "Todavía no hay versiones publicadas.");
+                    return;
+                }
+                StringBuilder sb = new StringBuilder();
+                for (int i = 0; i < releases.length(); i++) {
+                    JSONObject r = releases.getJSONObject(i);
+                    String name = r.optString("name", r.optString("tag_name", "?"));
+                    String relBody = r.optString("body", "").trim();
+                    sb.append(name).append('\n');
+                    if (!relBody.isEmpty()) sb.append(relBody).append('\n');
+                    if (i < releases.length() - 1) sb.append("\n──────────\n\n");
+                }
+                String message = sb.toString();
+                runOnUi(activity, () -> new AlertDialog.Builder(activity)
+                        .setTitle("Novedades de cada versión")
+                        .setMessage(message)
+                        .setPositiveButton("Cerrar", null)
+                        .show());
+            } catch (Exception e) {
+                notifyPlain(activity, "No se pudo consultar el historial de versiones: " + e.getMessage());
+            }
+        }, "wbm-changelog").start();
+    }
+
+    private static String httpGet(String url) throws Exception {
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setRequestProperty("Accept", "application/vnd.github+json");
+        // La API de GitHub exige un User-Agent; sin uno, responde 403.
+        conn.setRequestProperty("User-Agent", "wii-backup-manager-app");
+        conn.setConnectTimeout(8000);
+        conn.setReadTimeout(8000);
+        int code = conn.getResponseCode();
+        if (code != 200) return null;
+        return readAll(conn.getInputStream());
     }
 
     private static void notifyNewVersion(MainActivity activity, String latest, String current, String htmlUrl) {
