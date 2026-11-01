@@ -125,6 +125,10 @@ public class MainActivity extends Activity {
     private LinearLayout donateContainer;
     private Button notifBtn;
     private Button fabAdd;
+    private LinearLayout drawerPanel;
+    private View scrim;
+    private boolean drawerOpen = false;
+    private int drawerWidthPx;
     private EditText searchBox;
     private Button filterBtn;
     private LinearLayout isoBlock;
@@ -253,7 +257,7 @@ public class MainActivity extends Activity {
         header.setGravity(Gravity.CENTER_VERTICAL);
         header.setPadding(0, 0, 0, dp(6));
 
-        Button menuBtn = button("☰", v -> showMainMenu());
+        Button menuBtn = button("☰", v -> toggleDrawer());
         TextView title = new TextView(this);
         title.setText("Wii Backup Manager");
         title.setTextSize(15);
@@ -302,8 +306,86 @@ public class MainActivity extends Activity {
         fabParams.setMargins(0, 0, dp(16), dp(16));
         rootFrame.addView(fabAdd, fabParams);
 
+        // --- Panel deslizante del botón "☰": en vez de un menú emergente, se desliza desde la
+        // izquierda por encima de todo (con una sombra semitransparente detrás que lo cierra al
+        // tocarla), como el menú de hamburguesa de las apps de Android. ---
+        drawerWidthPx = dp(230);
+
+        scrim = new View(this);
+        scrim.setBackgroundColor(Color.argb(140, 0, 0, 0));
+        scrim.setVisibility(View.GONE);
+        scrim.setOnClickListener(v -> closeDrawer());
+        rootFrame.addView(scrim, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        drawerPanel = new LinearLayout(this);
+        drawerPanel.setOrientation(LinearLayout.VERTICAL);
+        drawerPanel.setPadding(dp(14), dp(20), dp(14), dp(14));
+        GradientDrawable drawerBg = new GradientDrawable();
+        drawerBg.setColor(CARD_WHITE);
+        drawerPanel.setBackground(drawerBg);
+        drawerPanel.setTranslationX(-drawerWidthPx);
+
+        TextView drawerTitle = new TextView(this);
+        drawerTitle.setText("Wii Backup Manager");
+        drawerTitle.setTextSize(15);
+        drawerTitle.setTypeface(null, Typeface.BOLD);
+        drawerTitle.setTextColor(ACCENT_BLUE);
+        drawerTitle.setPadding(dp(6), 0, dp(6), dp(16));
+        drawerPanel.addView(drawerTitle);
+        drawerPanel.addView(drawerMenuItem("📚 Biblioteca", 0));
+        drawerPanel.addView(drawerMenuItem("⚙ Ajustes", 1));
+        drawerPanel.addView(drawerMenuItem("💙 Donar", 2));
+
+        FrameLayout.LayoutParams drawerParams = new FrameLayout.LayoutParams(
+                drawerWidthPx, ViewGroup.LayoutParams.MATCH_PARENT);
+        drawerParams.gravity = Gravity.START;
+        rootFrame.addView(drawerPanel, drawerParams);
+
         setContentView(rootFrame);
         showTab(0);
+    }
+
+    /** Una fila tocable del panel deslizante: va a la pestaña indicada y cierra el panel. */
+    private TextView drawerMenuItem(String text, int tab) {
+        TextView row = new TextView(this);
+        row.setText(text);
+        row.setTextSize(15);
+        row.setTextColor(BTN_TEXT);
+        row.setPadding(dp(6), dp(14), dp(6), dp(14));
+        row.setOnClickListener(v -> {
+            showTab(tab);
+            closeDrawer();
+        });
+        return row;
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (drawerOpen) {
+            closeDrawer();
+        } else {
+            super.onBackPressed();
+        }
+    }
+
+    private void toggleDrawer() {
+        if (drawerOpen) closeDrawer();
+        else openDrawer();
+    }
+
+    private void openDrawer() {
+        drawerOpen = true;
+        scrim.setAlpha(0f);
+        scrim.setVisibility(View.VISIBLE);
+        scrim.animate().alpha(1f).setDuration(200).start();
+        drawerPanel.animate().translationX(0).setDuration(220).start();
+    }
+
+    private void closeDrawer() {
+        drawerOpen = false;
+        scrim.animate().alpha(0f).setDuration(200).withEndAction(() -> scrim.setVisibility(View.GONE)).start();
+        drawerPanel.animate().translationX(-drawerWidthPx).setDuration(220).start();
     }
 
     /** 0 = Biblioteca, 1 = Ajustes (opciones de conversión + registro de errores), 2 = Donar. */
@@ -312,13 +394,6 @@ public class MainActivity extends Activity {
         settingsContainer.setVisibility(tab == 1 ? View.VISIBLE : View.GONE);
         donateContainer.setVisibility(tab == 2 ? View.VISIBLE : View.GONE);
         if (fabAdd != null) fabAdd.setVisibility(tab == 0 ? View.VISIBLE : View.GONE);
-    }
-
-    /** Menú del botón "☰": a dónde ir (reemplaza la fila de pestañas de texto de antes). */
-    private void showMainMenu() {
-        new AlertDialog.Builder(this)
-                .setItems(new CharSequence[]{"Biblioteca", "Ajustes", "Donar"}, (d, which) -> showTab(which))
-                .show();
     }
 
     /** Menú del botón flotante "+": agregar un archivo suelto o escanear una carpeta entera. */
