@@ -86,8 +86,8 @@ jobs:
       - name: Publicar como Release descargable
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.4
-          name: Wii Backup Manager v0.1.4
+          tag_name: v0.2.0
+          name: Wii Backup Manager v0.2.0
           # El cuerpo del Release es el propio mensaje del commit que lo generó (sin las líneas de
           # atribución interna, filtradas en el paso de arriba): cada actualización se sube con una
           # descripción de qué cambió y por qué, así que esto se usa tal cual como registro de

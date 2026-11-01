@@ -19,12 +19,15 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.text.Editable;
 import android.text.TextUtils;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.GridView;
 import android.widget.LinearLayout;
@@ -34,9 +37,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /** Pantalla principal: destino, biblioteca de juegos (ISO/RVZ y WBFS por separado), conversión y pestaña de donar. */
@@ -58,8 +63,12 @@ public class MainActivity extends Activity {
     private static final int BTN_TEXT = Color.parseColor("#0B5A86");
     private static final int ACCENT_BLUE = Color.parseColor("#0B5A86");
 
-    /** Una de las dos listas de juegos (ISO/RVZ por un lado, WBFS por otro), como en la app de Windows. */
+    /** Una de las dos listas de juegos (ISO/RVZ por un lado, WBFS por otro), como en la app de Windows.
+     *  "master" guarda TODOS los juegos agregados a esta sección; "list" es lo que se ve y se puede
+     *  marcar ahora mismo (después de aplicar la búsqueda y el orden), para que buscar/ordenar nunca
+     *  borre juegos de verdad, solo cambie qué se muestra. */
     private final class Section {
+        final List<Game> master = new ArrayList<>();
         final List<Game> list = new ArrayList<>();
         final Set<Integer> selected = new HashSet<>();
         GameAdapter adapter;
@@ -76,10 +85,30 @@ public class MainActivity extends Activity {
             empty.setVisibility(list.isEmpty() ? View.VISIBLE : View.GONE);
         }
 
+        /** Recalcula "list" a partir de "master" con la búsqueda y el orden actuales. Al cambiar lo
+         *  que se ve, las posiciones ya no corresponden a lo marcado antes, así que se desmarca todo
+         *  (es lo normal: no se puede convertir algo que ya no se ve en la pantalla). */
+        void applyFilter(String query, Comparator<Game> sort) {
+            list.clear();
+            String q = query == null ? "" : query.toLowerCase(Locale.ROOT).trim();
+            for (Game g : master) {
+                if (q.isEmpty() || g.displayTitle().toLowerCase(Locale.ROOT).contains(q)
+                        || g.disc.id.toLowerCase(Locale.ROOT).contains(q)) {
+                    list.add(g);
+                }
+            }
+            if (sort != null) list.sort(sort);
+            selected.clear();
+            rebuild();
+        }
+
         void removeSelected() {
             List<Integer> idx = new ArrayList<>(selected);
             idx.sort((a, b) -> b - a);
-            for (int pos : idx) list.remove(pos);
+            for (int pos : idx) {
+                Game g = list.remove(pos);
+                master.remove(g);
+            }
             selected.clear();
         }
     }
@@ -94,10 +123,18 @@ public class MainActivity extends Activity {
     private LinearLayout libraryContainer;
     private LinearLayout settingsContainer;
     private LinearLayout donateContainer;
-    private Button tabLibraryBtn;
-    private Button tabSettingsBtn;
-    private Button tabDonateBtn;
     private Button notifBtn;
+    private Button fabAdd;
+    private EditText searchBox;
+    private Button filterBtn;
+    private LinearLayout isoBlock;
+    private LinearLayout wbfsBlock;
+
+    /** Qué formatos se muestran (el botón "Todos"/"ISO-RVZ"/"WBFS" de la pantalla principal). */
+    private enum FilterMode { ALL, ISO_RVZ, WBFS }
+    private FilterMode filterMode = FilterMode.ALL;
+    private String searchQuery = "";
+    private Comparator<Game> currentSort = null;
     // Estado del botón de notificaciones: avisa tanto de actualizaciones como de errores de
     // conversión (lo que pidió el usuario), dando prioridad visual al error (rojo) sobre el
     // aviso de actualización (amarillo) porque es lo más urgente de los dos.
@@ -201,29 +238,37 @@ public class MainActivity extends Activity {
     // ---------------------------------------------------------------- UI
 
     private void buildUi() {
+        FrameLayout rootFrame = new FrameLayout(this);
+        rootFrame.setBackgroundColor(BG_WII);
+
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12), dp(8), dp(12), dp(8));
-        root.setBackgroundColor(BG_WII);
 
-        // Pequeño botón de notificaciones arriba de todo: avisa (cambiando de texto/color) si hay
-        // una actualización disponible, y siempre deja ver el registro de cambios de cada versión.
-        LinearLayout notifRow = new LinearLayout(this);
-        notifRow.setOrientation(LinearLayout.HORIZONTAL);
-        notifRow.setPadding(0, 0, 0, dp(4));
+        // --- Barra de arriba, como en cualquier app de Android: menú (para ir a Biblioteca/Ajustes/
+        // Donar), título centrado, botón de notificaciones (avisa de actualizaciones y errores) y
+        // acceso directo a Ajustes. ---
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        header.setPadding(0, 0, 0, dp(6));
+
+        Button menuBtn = button("☰", v -> showMainMenu());
+        TextView title = new TextView(this);
+        title.setText("Wii Backup Manager");
+        title.setTextSize(15);
+        title.setTypeface(null, Typeface.BOLD);
+        title.setTextColor(ACCENT_BLUE);
+        title.setGravity(Gravity.CENTER);
+        title.setSingleLine(true);
+        title.setEllipsize(TextUtils.TruncateAt.END);
         notifBtn = button("🔔 Novedades", v -> onNotifClicked());
-        notifRow.addView(notifBtn);
-        root.addView(notifRow);
-
-        LinearLayout tabs = new LinearLayout(this);
-        tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabLibraryBtn = button("Biblioteca", v -> showTab(0));
-        tabSettingsBtn = button("Ajustes", v -> showTab(1));
-        tabDonateBtn = button("Donar", v -> showTab(2));
-        tabs.addView(tabLibraryBtn, weight());
-        tabs.addView(tabSettingsBtn, weight());
-        tabs.addView(tabDonateBtn, weight());
-        root.addView(tabs);
+        Button gearBtn = button("⚙", v -> showTab(1));
+        header.addView(menuBtn);
+        header.addView(title, weight());
+        header.addView(notifBtn);
+        header.addView(gearBtn);
+        root.addView(header);
 
         libraryContainer = buildLibraryTab();
         settingsContainer = buildSettingsTab();
@@ -235,7 +280,29 @@ public class MainActivity extends Activity {
         root.addView(donateContainer, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        setContentView(root);
+        rootFrame.addView(root, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // Botón flotante "+" (solo visible en Biblioteca): abre el menú para agregar un juego o
+        // escanear una carpeta entera, en vez de dos botones grandes ocupando espacio fijo.
+        fabAdd = new Button(this);
+        fabAdd.setText("+");
+        fabAdd.setAllCaps(false);
+        fabAdd.setTextSize(22);
+        fabAdd.setTextColor(Color.WHITE);
+        fabAdd.setMinimumHeight(0);
+        fabAdd.setMinimumWidth(0);
+        GradientDrawable fabBg = new GradientDrawable();
+        fabBg.setShape(GradientDrawable.OVAL);
+        fabBg.setColor(ACCENT_BLUE);
+        fabAdd.setBackground(fabBg);
+        fabAdd.setOnClickListener(v -> showAddMenu());
+        FrameLayout.LayoutParams fabParams = new FrameLayout.LayoutParams(dp(56), dp(56));
+        fabParams.gravity = Gravity.BOTTOM | Gravity.END;
+        fabParams.setMargins(0, 0, dp(16), dp(16));
+        rootFrame.addView(fabAdd, fabParams);
+
+        setContentView(rootFrame);
         showTab(0);
     }
 
@@ -244,9 +311,22 @@ public class MainActivity extends Activity {
         libraryContainer.setVisibility(tab == 0 ? View.VISIBLE : View.GONE);
         settingsContainer.setVisibility(tab == 1 ? View.VISIBLE : View.GONE);
         donateContainer.setVisibility(tab == 2 ? View.VISIBLE : View.GONE);
-        tabLibraryBtn.setEnabled(tab != 0);
-        tabSettingsBtn.setEnabled(tab != 1);
-        tabDonateBtn.setEnabled(tab != 2);
+        if (fabAdd != null) fabAdd.setVisibility(tab == 0 ? View.VISIBLE : View.GONE);
+    }
+
+    /** Menú del botón "☰": a dónde ir (reemplaza la fila de pestañas de texto de antes). */
+    private void showMainMenu() {
+        new AlertDialog.Builder(this)
+                .setItems(new CharSequence[]{"Biblioteca", "Ajustes", "Donar"}, (d, which) -> showTab(which))
+                .show();
+    }
+
+    /** Menú del botón flotante "+": agregar un archivo suelto o escanear una carpeta entera. */
+    private void showAddMenu() {
+        new AlertDialog.Builder(this)
+                .setItems(new CharSequence[]{"Agregar juego (ISO/RVZ beta/WBFS)", "Escanear carpeta"},
+                        (d, which) -> { if (which == 0) addGameFiles(); else scanFolder(); })
+                .show();
     }
 
     private TextView sectionTitle(String text) {
@@ -289,36 +369,75 @@ public class MainActivity extends Activity {
         col.setOrientation(LinearLayout.VERTICAL);
 
         // --- Destino (USB OTG / SD / carpeta): queda elegido y se recuerda entre sesiones, como en
-        // Wii Backup Manager. Siempre visible arriba, independiente de los juegos agregados.
+        // Wii Backup Manager. Toda la tarjeta es tocable para cambiarlo, como la barra de "unidad
+        // actual" de la app de Windows.
         LinearLayout destBox = new LinearLayout(this);
         destBox.setOrientation(LinearLayout.VERTICAL);
-        destBox.setPadding(dp(8), dp(8), dp(8), dp(8));
+        destBox.setPadding(dp(10), dp(8), dp(10), dp(8));
         GradientDrawable destBg = new GradientDrawable();
         destBg.setColor(CARD_WHITE);
-        destBg.setCornerRadius(dp(10));
+        destBg.setCornerRadius(dp(12));
         destBg.setStroke(dp(1), BTN_BORDER);
         destBox.setBackground(destBg);
+        destBox.setOnClickListener(v -> chooseDestination());
 
         destinationText = new TextView(this);
-        destinationText.setTextSize(14);
+        destinationText.setTextSize(13);
         destinationText.setTextColor(BTN_TEXT);
+        destinationText.setSingleLine(true);
+        destinationText.setEllipsize(TextUtils.TruncateAt.END);
         destBox.addView(destinationText);
 
         storageStatusText = new TextView(this);
-        storageStatusText.setTextSize(12);
-        storageStatusText.setPadding(0, dp(2), 0, dp(4));
+        storageStatusText.setTextSize(11);
+        storageStatusText.setTextColor(BTN_TEXT);
+        storageStatusText.setPadding(0, dp(1), 0, 0);
         destBox.addView(storageStatusText);
-
-        destBox.addView(button("Elegir destino (USB OTG / SD / carpeta)", v -> chooseDestination()));
         col.addView(destBox);
 
-        // --- Juegos a convertir: se agregan uno por uno (ISO/RVZ/WBFS) o escaneando una carpeta entera.
-        LinearLayout addRow = new LinearLayout(this);
-        addRow.setOrientation(LinearLayout.HORIZONTAL);
-        addRow.setPadding(0, dp(8), 0, dp(4));
-        addRow.addView(button("Agregar juego (ISO/RVZ beta)", v -> addGameFiles()), weight());
-        addRow.addView(button("Escanear carpeta", v -> scanFolder()), weight());
-        col.addView(addRow);
+        // --- Buscar y filtrar: por nombre/ID, o por formato (todos / solo ISO-RVZ / solo WBFS).
+        LinearLayout searchRow = new LinearLayout(this);
+        searchRow.setOrientation(LinearLayout.HORIZONTAL);
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        searchRow.setPadding(0, dp(8), 0, dp(4));
+
+        searchBox = new EditText(this);
+        searchBox.setHint("Buscar juegos…");
+        searchBox.setTextSize(13);
+        searchBox.setTextColor(BTN_TEXT);
+        searchBox.setSingleLine(true);
+        searchBox.setPadding(dp(10), dp(6), dp(10), dp(6));
+        GradientDrawable searchBg = new GradientDrawable();
+        searchBg.setColor(CARD_WHITE);
+        searchBg.setCornerRadius(dp(10));
+        searchBg.setStroke(dp(1), BTN_BORDER);
+        searchBox.setBackground(searchBg);
+        searchBox.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(Editable s) {
+                searchQuery = s.toString();
+                applyFilters();
+            }
+        });
+        searchRow.addView(searchBox, weight());
+
+        filterBtn = button("Todos", v -> showFilterMenu());
+        LinearLayout.LayoutParams filterLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        filterLp.setMargins(dp(6), 0, 0, 0);
+        searchRow.addView(filterBtn, filterLp);
+        col.addView(searchRow);
+
+        // --- Orden: por nombre, tamaño o región, como los botones de encabezado de la app de Windows.
+        LinearLayout sortRow = new LinearLayout(this);
+        sortRow.setOrientation(LinearLayout.HORIZONTAL);
+        sortRow.setPadding(0, 0, 0, dp(4));
+        sortRow.addView(button("A-Z", v -> setSort(Comparator.comparing(
+                g -> g.displayTitle().toLowerCase(Locale.ROOT)))));
+        sortRow.addView(button("Tamaño", v -> setSort(Comparator.<Game>comparingLong(g -> g.totalSize).reversed())));
+        sortRow.addView(button("Región", v -> setSort(Comparator.comparing(g -> g.disc.region()))));
+        col.addView(sortRow);
 
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -332,10 +451,11 @@ public class MainActivity extends Activity {
         // movió a la pestaña «Ajustes».
         // El soporte de RVZ es beta: no se probó todavía con todos los archivos reales posibles, así
         // que se marca para que quede claro que la conversión puede fallar con algunos juegos.
-        col.addView(buildSectionBlock(isoSection, "ISO / RVZ (beta, puede fallar)  →  se convierten a WBFS",
-                "Sin juegos ISO/RVZ. Toca «Agregar juego» o «Escanear carpeta»."), weightTall());
-        col.addView(buildSectionBlock(wbfsSection, "WBFS  →  se pueden pasar a ISO",
-                "Sin juegos WBFS."), weightTall());
+        isoBlock = buildSectionBlock(isoSection, "ISO / RVZ (beta, puede fallar)  →  se convierten a WBFS",
+                "Sin juegos ISO/RVZ. Toca el «+» para agregar uno o escanear una carpeta.");
+        wbfsBlock = buildSectionBlock(wbfsSection, "WBFS  →  se pueden pasar a ISO", "Sin juegos WBFS.");
+        col.addView(isoBlock, weightTall());
+        col.addView(wbfsBlock, weightTall());
 
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -468,11 +588,12 @@ public class MainActivity extends Activity {
 
     private void updateDestinationText() {
         if (destination == null) {
-            destinationText.setText("Destino: (sin elegir) — toca «Elegir destino» y marca tu USB OTG, SD o carpeta.");
+            destinationText.setText("Unidad actual: (sin elegir) — toca aquí para elegir tu USB OTG, SD o carpeta");
             storageStatusText.setText("");
         } else {
             String seg = destination.getLastPathSegment();
-            destinationText.setText("✓ Destino: " + (seg == null ? destination.toString() : Uri.decode(seg)));
+            String name = seg == null ? destination.toString() : Uri.decode(seg);
+            destinationText.setText("Unidad actual: " + name + "  (toca para cambiar)");
             storageStatusText.setText(storageInfo != null ? storageInfo.statusText() : "");
         }
     }
@@ -583,19 +704,48 @@ public class MainActivity extends Activity {
     private void addGamesToList(List<Game> found) {
         if (found.isEmpty()) return;
         Set<Uri> already = new LinkedHashSet<>();
-        for (Game g : isoSection.list) already.add(g.parts.get(0));
-        for (Game g : wbfsSection.list) already.add(g.parts.get(0));
+        for (Game g : isoSection.master) already.add(g.parts.get(0));
+        for (Game g : wbfsSection.master) already.add(g.parts.get(0));
         int added = 0;
         for (Game g : found) {
             if (!already.add(g.parts.get(0))) continue;
-            (g.kind == Game.Kind.WBFS ? wbfsSection : isoSection).list.add(g);
+            (g.kind == Game.Kind.WBFS ? wbfsSection : isoSection).master.add(g);
             added++;
         }
-        isoSection.rebuild();
-        wbfsSection.rebuild();
+        applyFilters();
         if (added > 0) {
             Toast.makeText(this, added + " juego(s) agregado(s).", Toast.LENGTH_SHORT).show();
         }
+    }
+
+    /** Vuelve a calcular qué se ve en cada sección según la búsqueda, el formato elegido y el
+     *  orden actual, sin perder los juegos que no coinciden (siguen en "master"). */
+    private void applyFilters() {
+        isoSection.applyFilter(searchQuery, currentSort);
+        wbfsSection.applyFilter(searchQuery, currentSort);
+        if (isoBlock != null) {
+            isoBlock.setVisibility(filterMode == FilterMode.WBFS ? View.GONE : View.VISIBLE);
+        }
+        if (wbfsBlock != null) {
+            wbfsBlock.setVisibility(filterMode == FilterMode.ISO_RVZ ? View.GONE : View.VISIBLE);
+        }
+        updateConvertLabel();
+    }
+
+    private void setSort(Comparator<Game> sort) {
+        currentSort = sort;
+        applyFilters();
+    }
+
+    /** Botón "Todos"/filtro: elegir si se muestran los dos formatos o solo uno. */
+    private void showFilterMenu() {
+        new AlertDialog.Builder(this)
+                .setItems(new CharSequence[]{"Todos los juegos", "Solo ISO / RVZ", "Solo WBFS"}, (d, which) -> {
+                    filterMode = which == 1 ? FilterMode.ISO_RVZ : which == 2 ? FilterMode.WBFS : FilterMode.ALL;
+                    filterBtn.setText(which == 1 ? "ISO/RVZ" : which == 2 ? "WBFS" : "Todos");
+                    applyFilters();
+                })
+                .show();
     }
 
     /** Quita de la lista los juegos marcados (no borra los archivos originales). */

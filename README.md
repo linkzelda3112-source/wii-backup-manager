@@ -1,6 +1,6 @@
 # Wii Backup Manager para Android
 
-Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA y WBFS** directamente en el teléfono. Versión 0.1.4.
+Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA y WBFS** directamente en el teléfono. Versión 0.2.0.
 
 ## Qué hace
 
@@ -16,8 +16,11 @@ Convierte copias de seguridad de tus propios discos de Wii entre **ISO, RVZ/WIA 
 - Trabaja en segundo plano con notificación de progreso y botón de cancelar. Si algo falla o cancelas, borra el archivo a medio escribir.
 - Nunca borra ni sobrescribe tus archivos originales.
 - Mantén pulsada la carátula de un juego para ver su información.
-- Tres pestañas: **🎃 Biblioteca** (destino, agregar juegos y las dos cuadrículas, con el máximo espacio posible para las carátulas), **🦇 Ajustes** (opciones de conversión y el registro de conversión/errores, con su botón «Copiar registro») y **👻 Donar**.
-- Estilo inspirado en el menú de Wii: fondo celeste y botones compactos en tarjetas blancas redondeadas con borde celeste, para que sobre el mínimo espacio posible y las carátulas se vean lo más grandes que se pueda.
+- Barra superior simple, como cualquier app de Android: botón «☰» (menú para ir a Biblioteca, Ajustes o Donar), título y acceso directo a Ajustes («⚙»), dejando el máximo espacio posible para las carátulas debajo.
+- Buscador de juegos por nombre o ID, botón de filtro (todos / solo ISO-RVZ / solo WBFS) y botones de orden («A-Z», «Tamaño», «Región»), como en Wii Backup Manager de Windows.
+- Botón flotante «+» para agregar un juego suelto o escanear una carpeta entera, en vez de dos botones fijos ocupando espacio de la pantalla.
+- Estilo inspirado en el menú de Wii: fondo celeste y tarjetas/botones blancos redondeados con borde celeste, para que sobre el mínimo espacio posible y las carátulas se vean lo más grandes que se pueda.
+- Ícono de la app en pixel art: un control de Wii y una calabaza de Halloween iluminada, sobre fondo azul noche.
 - Avisa si hay una versión más nueva: al abrir la app consulta en silencio el último Release de este repositorio en GitHub, y si hay una versión más nueva que la instalada, muestra un aviso con un botón para abrir la página y descargarla (no pasa nada si no hay internet: simplemente no avisa). También hay un botón «Buscar actualizaciones ahora» en la pestaña Ajustes para revisar cuando quieras.
 - Botón «Formatear USB/SD a FAT32» en Ajustes → Utilidades: Android no deja que ninguna app normal formatee una memoria (hace falta root), así que este botón solo abre los ajustes de almacenamiento del teléfono para que elijas ahí tu USB OTG o SD y le des «Formatear» — la app nunca formatea nada directamente, así que nunca puede tocar por accidente el almacenamiento interno.
 - Botón «🔔 Novedades» arriba de todo, que avisa de dos cosas: actualizaciones y errores de conversión. Al abrir la app se revisa en silencio si hay una versión más nueva en GitHub y, si la hay, el botón cambia a «🔔 ¡Actualización vX.Y.Z!» en amarillo; si una conversión termina con error, el botón se pone rojo («🔔 ¡Hubo un error!») y, al tocarlo, muestra primero esos errores recientes. En cualquier caso, tocar el botón siempre deja ver también el registro completo de novedades (qué trajo cada versión publicada).
